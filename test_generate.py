@@ -1,5 +1,3 @@
-import json
-
 import requests
 
 url = "http://localhost:3000/generate"
@@ -23,13 +21,65 @@ payload = {
             "tenure": "5 Years",
             "today_date": "July 09, 2026",
             "collaterals": [
-                {"type": "Residential Land", "value": "NPR 3,00,000"},
-                {"type": "Gold Jewelry", "value": "NPR 2,00,000"},
-                {"type": "Gold Jewelry", "value": "NPR 2,00,000"},
-                {"type": "Gold Jewelry", "value": "NPR 2,00,000"},
-                {"type": "Gold Jewelry", "value": "NPR 2,00,000"},
-                {"type": "Gold Jewelry", "value": "NPR 2,00,000"},
+                {
+                    "type": "Residential Land",
+                    "location": "Kathmandu-32",
+                    "value": "3,00,000",
+                },
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {"type": "Gold Jewelry", "location": "Bank Vault", "value": "2,00,000"},
+                {
+                    "type": "Fixed Deposit",
+                    "location": "Siddhartha Bank",
+                    "value": "1,50,000",
+                },
+                {"type": "Vehicle (Car)", "location": "Garage", "value": "4,50,000"},
             ],
+            "total_valuation": "11,00,000",
         },
     },
     "content": [
@@ -233,6 +283,55 @@ payload = {
                 "width": "10cm",  # Fixed width table
                 "columns": ["auto", "auto"],  # Auto-size columns to fit content
                 "inset": "5pt",
+            },
+        },
+        # new
+        {
+            "type": "heading",
+            "level": 2,
+            "alignment": "center",
+            "content": [{"text": "Collateral Valuation Schedule"}],
+        },
+        {
+            "type": "paragraph",
+            "content": [
+                {"text": "Loan Ref: "},
+                {"key": "details.loan_id"},
+                {"text": " | Customer: "},
+                {"key": "details.customer_name"},
+            ],
+        },
+        {
+            "type": "table",
+            "headers": [
+                "S.N.",
+                "Asset Type",
+                "Location / Custodian",
+                "Valuation (NPR)",
+            ],
+            # DYNAMIC LOOP BODY
+            "loop_data": "details.collaterals",
+            "row_template": [
+                {"key": "__index"},  # Magic variable for Auto S.N. (1, 2, 3...)
+                {"key": "type"},  # Resolved from local 'item'
+                {"key": "location"},  # Resolved from local 'item'
+                {"key": "value"},  # Resolved from local 'item'
+            ],
+            # FOOTER (TOTALS)
+            "footer": [
+                {"text": ""},
+                {"text": ""},
+                {
+                    "text": "Total Valuation:",
+                    "bold": True,
+                },  # Note: requires bold support in VariableCell or we just use text
+                {"key": "total_valuation", "bold": True},
+            ],
+            "style": {
+                "columns": ["1fr", "3fr", "3fr", "2fr"],  # Proportional widths
+                "header_bg": "#1f2937",
+                "stroke": "0.5pt",
+                "inset": "8pt",
             },
         },
         {
