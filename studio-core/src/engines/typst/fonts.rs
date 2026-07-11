@@ -18,11 +18,18 @@ pub fn font_assets() -> &'static FontAssets {
         let mut font_db = Database::new();
         font_db.load_system_fonts();
 
-        let custom_font_dir =
-            std::env::var("STUDIO_FONTS_DIR").unwrap_or_else(|_| "./fonts".to_string());
+        let custom_font_dir = std::env::var("STUDIO_FONTS_DIR").unwrap_or_else(|_| {
+            if std::path::Path::new("./fonts").exists() {
+                "./fonts".to_string()
+            } else if std::path::Path::new("../fonts").exists() {
+                "../fonts".to_string()
+            } else {
+                "./fonts".to_string() // Fallback to trigger the warning if neither exists
+            }
+        });
 
         if std::path::Path::new(&custom_font_dir).exists() {
-            tracing::info!("Loading custom fonts from: {}", custom_font_dir);
+            tracing::info!("✅ Loading custom fonts from: {}", custom_font_dir);
 
             if let Ok(entries) = std::fs::read_dir(&custom_font_dir) {
                 for entry in entries.flatten() {
