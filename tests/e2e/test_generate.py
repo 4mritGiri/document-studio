@@ -1,9 +1,31 @@
+# tests/e23/test_generate.py
+
+import base64
+import mimetypes
+import os
+
 import requests
+
+
+def to_data_uri(path: str) -> str:
+    mime_type, _ = mimetypes.guess_type(path)
+    mime_type = mime_type or "image/png"
+    with open(path, "rb") as f:
+        encoded = base64.b64encode(f.read()).decode("ascii")
+    return f"data:{mime_type};base64,{encoded}"
+
 
 url = "http://localhost:3000/generate"
 
+LOGO_PATH = "/media/amrit/SSDAmrit/Builds/local/DocumentStudio/assets/images/logo.png"
+OUTPUT_DIR = "docs/examples/"
+PLACEHOLDER_LOGO = to_data_uri(LOGO_PATH)
+
+
 payload = {
     "template_id": "mlms_proposal_v1",
+    "format": "pdf",
+    # "format": "html",
     "data": {
         "date": "4th August 2025",
         "company_name": "Siddhartha Bank Ltd.",
@@ -80,6 +102,104 @@ payload = {
                 {"type": "Vehicle (Car)", "location": "Garage", "value": "4,50,000"},
             ],
             "total_valuation": "11,00,000",
+        },
+    },
+    "page": {
+        # This is the reusable "letterhead" — it's drawn behind every page,
+        # the same way a Word letterhead template works.
+        "background": [
+            # Solid diagonal cut in the topleft to center corner
+            {
+                "type": "placed",
+                "anchor": "top-left",
+                # "dx": "1cm",
+                # "dy": "0.1cm",
+                "content": {
+                    "type": "shape",
+                    "kind": "triangle",
+                    "width": "18cm",
+                    "height": "0.88cm",
+                    # "rotate": "359deg",
+                    "fill": "#323139",
+                },
+            },
+            # Solid diagonal cut in the top-left corner
+            {
+                "type": "placed",
+                "anchor": "top-left",
+                "dx": "-2.2cm",
+                "dy": "-0.91cm",
+                "content": {
+                    "type": "shape",
+                    "kind": "triangle",
+                    "width": "3.1cm",
+                    "height": "3cm",
+                    "rotate": "142deg",
+                    "fill": "#34364b",
+                },
+            },
+            # Solid rectangle cut in the topleft to center corner
+            {
+                "type": "placed",
+                "anchor": "top-left",
+                "dx": "-0.8cm",
+                # "dy": "-0.165cm",
+                "content": {
+                    "type": "shape",
+                    "kind": "rect",
+                    "width": "3cm",
+                    "height": "0.2cm",
+                    "rotate": "45deg",
+                    "fill": "#ffffff",
+                },
+            },
+            # Logo pinned top-left, on top of the letterhead
+            {
+                "type": "placed",
+                "anchor": "top-left",
+                "dx": "2cm",
+                "dy": "2cm",
+                "content": {
+                    "type": "image",
+                    "src": PLACEHOLDER_LOGO,
+                    "width": "2cm",
+                },
+            },
+            {
+                "type": "placed",
+                "anchor": "top-left",
+                "dx": "4.5cm",
+                "dy": "1cm",
+                "content": {
+                    "type": "heading",
+                    "level": 1,
+                    "content": [{"text": "FINTECH", "bold": True}],
+                },
+            },
+            # Smaller accent triangle bottom-right
+            {
+                "type": "placed",
+                "anchor": "bottom-right",
+                "content": {
+                    "type": "shape",
+                    "kind": "triangle",
+                    "width": "4cm",
+                    "height": "2cm",
+                    "fill": "#323139",
+                    "rotate": "180deg",
+                },
+            },
+        ],
+        "header": {
+            "skip_first_page": True,
+            "alignment": "right",
+            "content": [{"key": "company_name"}, {"text": " - Invoice"}],
+        },
+        "footer": {
+            # Icon + text contact bar, like the reference letterhead's footer strip
+            "content": [
+                {"text": ""}
+            ],  # unused when we render a Columns node below instead
         },
     },
     "content": [
@@ -343,12 +463,18 @@ payload = {
     ],
 }
 
-response = requests.post(url, json=payload)
+api_key = os.environ.get(
+    "DOCUMENT_ENGINE_API_KEY",
+    "90de5ac5c9501019b9d3ae98f7503d82a5e1de1a7c49213fc3559c91f7b01a56",
+)
+headers = {"x-api-key": f"{api_key}"}
+response = requests.post(url, json=payload, headers=headers)
 
 if response.status_code == 200:
-    with open("mlms_proposal.pdf", "wb") as f:
+    # with open(OUTPUT_DIR + "mlms_proposal.html", "wb") as f:
+    with open(OUTPUT_DIR + "mlms_proposal.pdf", "wb") as f:
         f.write(response.content)
-    print("✅ Success! 'mlms_proposal.pdf' has been generated.")
+    print(f"✅ Success! '{OUTPUT_DIR}mlms_proposal.pdf' has been generated.")
 else:
     print(f"❌ Error: {response.status_code}")
     print(response.text)

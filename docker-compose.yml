@@ -1,0 +1,12 @@
+
+services:
+  studio-core:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.engine
+    ports:
+      - "3000:3000"
+    environment:
+      - DOCUMENT_ENGINE_API_KEY=dev-secret-key
+      - ALLOWED_IMAGE_HOSTS=upload.wikimedia.org
+    restart: unless-stopped
