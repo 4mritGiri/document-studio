@@ -38,3 +38,4 @@ Cargo.lock
 # --- Generated Files (Keep docs/examples, ignore root level test outputs) ---
 /*.pdf
 /*.html
+structure
