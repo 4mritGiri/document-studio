@@ -1,0 +1,120 @@
+// src/converter/builder.rs
+
+use crate::config::MAX_NODE_DEPTH;
+use crate::converter::context::build_header_footer_block;
+use crate::converter::nodes::{layout, media, table, text};
+use crate::domain::{Node, PageSettings};
+use serde_json::Value;
+use std::collections::HashMap;
+use typst::foundations::Bytes;
+
+pub fn json_to_typst(
+    content: &[Node],
+    data: &Value,
+    page: &Option<PageSettings>,
+) -> Result<(String, HashMap<String, Bytes>), String> {
+    let mut typst_code = String::new();
+    let mut assets = HashMap::new();
+    typst_code.push_str(&build_page_preamble(page, data, &mut assets)?);
+    for node in content {
+        typst_code.push_str(&render_node(node, data, &mut assets, 0)?);
+    }
+    Ok((typst_code, assets))
+}
+
+fn build_page_preamble(
+    page: &Option<PageSettings>,
+    data: &Value,
+    assets: &mut HashMap<String, Bytes>,
+) -> Result<String, String> {
+    let header = page.as_ref().and_then(|p| p.header.as_ref());
+    let footer = page.as_ref().and_then(|p| p.footer.as_ref());
+    let background = page.as_ref().and_then(|p| p.background.as_ref());
+
+    let top = if header.is_some() { "3cm" } else { "2cm" };
+    let bottom = if footer.is_some() { "3cm" } else { "2cm" };
+
+    let mut out = format!(
+        "#set page(width: 210mm, height: 297mm, margin: (top: {top}, bottom: {bottom}, x: 2cm)"
+    );
+    if let Some(h) = header {
+        out.push_str(&format!(
+            ",\n  header: {}",
+            build_header_footer_block(h, data)
+        ));
+    }
+    if let Some(f) = footer {
+        out.push_str(&format!(
+            ",\n  footer: {}",
+            build_header_footer_block(f, data)
+        ));
+    }
+    if let Some(bg) = background {
+        let mut bg_content = String::new();
+        for n in bg {
+            bg_content.push_str(&render_node(n, data, assets, 0)?);
+        }
+        out.push_str(&format!(",\n  background: [\n{}\n]", bg_content));
+    }
+    out.push_str("\n)\n#set text(font: \"Times New Roman\", size: 12pt)\n\n");
+    Ok(out)
+}
+
+pub fn render_node(
+    node: &Node,
+    data: &Value,
+    assets: &mut HashMap<String, Bytes>,
+    depth: usize,
+) -> Result<String, String> {
+    if depth > MAX_NODE_DEPTH {
+        return Err("Max nesting depth exceeded".to_string());
+    }
+    match node {
+        Node::Paragraph { content, alignment } => {
+            Ok(text::render_paragraph(content, alignment, data))
+        }
+        Node::Heading {
+            level,
+            content,
+            alignment,
+        } => Ok(text::render_heading(*level, content, alignment, data)),
+        Node::BulletList { items } => Ok(text::render_bullet_list(items, data)),
+        Node::Table {
+            headers,
+            rows,
+            loop_data,
+            row_template,
+            footer,
+            style,
+        } => Ok(format!(
+            "{}\n\n",
+            table::format_table(headers, rows, loop_data, row_template, footer, data, style)?
+        )),
+        Node::PageBreak => Ok("#pagebreak()\n\n".to_string()),
+        Node::Spacer { height } => Ok(format!("#v({})\n\n", height)),
+        Node::Image {
+            src,
+            width,
+            height,
+            alignment,
+        } => media::render_image(src, width, height, alignment, assets),
+        Node::Shape {
+            kind,
+            width,
+            height,
+            fill,
+            rotate,
+        } => Ok(media::render_shape(kind, width, height, fill, rotate)),
+        Node::Placed {
+            anchor,
+            dx,
+            dy,
+            content,
+        } => layout::render_placed(anchor, dx, dy, content, data, assets, depth + 1),
+        Node::Columns {
+            items,
+            column_widths,
+            gutter,
+        } => layout::render_columns(items, column_widths, gutter, data, assets, depth + 1),
+    }
+}

@@ -1,0 +1,32 @@
+[package]
+name = "studio-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = { version = "0.7", features = ["json"] }
+tokio = { version = "1", features = ["full"] }
+tower-http = { version = "0.6", features = ["trace"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Caching and hashing
+moka = { version = "0.12", features = ["sync"] }
+sha2 = "0.10"
+
+# PDF Generation
+typst = "0.15.0"
+typst-pdf = "0.15.0"
+
+# Utilities
+uuid = { version = "1", features = ["v4"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+dotenvy = "0.15"
+comemo = "0.4"
+fontdb = "0.16"
+base64 = "0.22"
+
+# HTTP client for allowlisted remote image fetching (blocking variant is used
+# inside tokio::task::spawn_blocking, alongside typst::compile — see main.rs).
+reqwest = { version = "0.12", features = ["rustls-tls", "blocking"] }
