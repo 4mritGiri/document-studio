@@ -39,3 +39,4 @@ Cargo.lock
 /*.pdf
 /*.html
 notes/*
+**/examples/*
