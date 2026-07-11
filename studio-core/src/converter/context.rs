@@ -43,7 +43,7 @@ pub fn color_expr(fill: &str) -> String {
     }
 }
 
-pub fn format_inline_content(items: &[InlineContent], data: &Value) -> String {
+pub fn format_inline_content(items: &[InlineContent], _data: &Value) -> String {
     let mut result = String::new();
     for item in items {
         match item {
@@ -57,7 +57,7 @@ pub fn format_inline_content(items: &[InlineContent], data: &Value) -> String {
                 }
                 result.push_str(&text);
             }
-            InlineContent::Variable(v) => result.push_str(&resolve_variable(&v.key, data)),
+            InlineContent::Variable(v) => result.push_str(&resolve_variable_to_typst(&v.key)),
             InlineContent::PageNumber(p) => result.push_str(&render_page_number_format(
                 p.format.as_deref().unwrap_or("{current}"),
             )),
@@ -66,13 +66,15 @@ pub fn format_inline_content(items: &[InlineContent], data: &Value) -> String {
     result
 }
 
-pub fn build_header_footer_block(hf: &PageHeaderFooter, data: &Value) -> String {
+pub fn build_header_footer_block(hf: &PageHeaderFooter, _data: &Value) -> String {
     let align = match hf.alignment.as_deref() {
         Some("left") => "left",
         Some("right") => "right",
         _ => "center",
     };
-    let default_text = format_header_footer_inline(&hf.content, data);
+
+    // FIX: Pass _data, but it won't be used for variable resolution anymore
+    let default_text = format_header_footer_inline(&hf.content, _data);
     let default_block = format!("align({})[{}]", align, default_text);
     let empty_block = "[]".to_string();
 
@@ -85,7 +87,7 @@ pub fn build_header_footer_block(hf: &PageHeaderFooter, data: &Value) -> String 
             format!(
                 "align({})[{}]",
                 align,
-                format_header_footer_inline(fp, data)
+                format_header_footer_inline(fp, _data)
             ),
             default_block.clone(),
         )
@@ -96,7 +98,7 @@ pub fn build_header_footer_block(hf: &PageHeaderFooter, data: &Value) -> String 
     format!("context {{\n  let pg = counter(page).get().first()\n  if pg == 1 {{ {first} }} else {{ {rest} }}\n}}")
 }
 
-fn format_header_footer_inline(items: &[InlineContent], data: &Value) -> String {
+fn format_header_footer_inline(items: &[InlineContent], _data: &Value) -> String {
     let mut result = String::new();
     for item in items {
         match item {
@@ -110,7 +112,8 @@ fn format_header_footer_inline(items: &[InlineContent], data: &Value) -> String 
                 }
                 result.push_str(&text);
             }
-            InlineContent::Variable(v) => result.push_str(&resolve_variable(&v.key, data)),
+            // FIX: Defer resolution to Typst!
+            InlineContent::Variable(v) => result.push_str(&resolve_variable_to_typst(&v.key)),
             InlineContent::PageNumber(p) => result.push_str(&render_page_number_format(
                 p.format.as_deref().unwrap_or("{current}"),
             )),
@@ -186,4 +189,16 @@ pub fn resolve_variable(key: &str, data: &Value) -> String {
     } else {
         format!("[MISSING: {}]", key)
     }
+}
+
+pub fn resolve_variable_to_typst(key: &str) -> String {
+    let escaped_key = key.replace('\\', "\\\\").replace('"', "\\\"");
+
+    format!(
+        r#"#{{
+  let __val = safe-get(item, "{}")
+  if __val != none {{ __val }} else {{ safe-get(data, "{}") }}
+}}"#,
+        escaped_key, escaped_key
+    )
 }

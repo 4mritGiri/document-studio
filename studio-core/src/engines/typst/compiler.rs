@@ -1,4 +1,4 @@
-// src/engine/compiler.rs
+// src/engines/typst/compiler.rs
 
 use super::world::SimpleWorld;
 use std::collections::HashMap;

@@ -20,12 +20,13 @@ url = "http://localhost:3000/api/v1/generate"
 LOGO_PATH = "/media/amrit/SSDAmrit/Builds/local/DocumentStudio/assets/images/logo.png"
 OUTPUT_DIR = "docs/examples/"
 PLACEHOLDER_LOGO = to_data_uri(LOGO_PATH)
-
+template_id = "mlms_proposal_v1"
+# format = "pdf"
+format = "html"
 
 payload = {
-    "template_id": "mlms_proposal_v1",
-    "format": "pdf",
-    # "format": "html",
+    "template_id": template_id,
+    "format": format,
     "data": {
         "date": "4th August 2025",
         "company_name": "Siddhartha Bank Ltd.",
@@ -472,9 +473,9 @@ response = requests.post(url, json=payload, headers=headers)
 
 if response.status_code == 200:
     # with open(OUTPUT_DIR + "mlms_proposal.html", "wb") as f:
-    with open(OUTPUT_DIR + "mlms_proposal.pdf", "wb") as f:
+    with open(OUTPUT_DIR + f"{template_id}.{format}", "wb") as f:
         f.write(response.content)
-    print(f"✅ Success! '{OUTPUT_DIR}mlms_proposal.pdf' has been generated.")
+    print(f"✅ Success! '{OUTPUT_DIR}{template_id}.{format}' has been generated.")
 else:
     print(f"❌ Error: {response.status_code}")
     print(response.text)

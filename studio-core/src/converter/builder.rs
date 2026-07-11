@@ -10,15 +10,58 @@ use typst::foundations::Bytes;
 
 pub fn json_to_typst(
     content: &[Node],
-    data: &Value,
+    _data: &Value,
     page: &Option<PageSettings>,
 ) -> Result<(String, HashMap<String, Bytes>), String> {
     let mut typst_code = String::new();
     let mut assets = HashMap::new();
-    typst_code.push_str(&build_page_preamble(page, data, &mut assets)?);
-    for node in content {
-        typst_code.push_str(&render_node(node, data, &mut assets, 0)?);
+
+    typst_code.push_str(
+        r#"
+#let item = (:) // Empty dictionary for non-loop contexts
+
+#let safe-get(obj, path) = {
+  let parts = path.split(".")
+  let current = obj
+  for part in parts {
+    // 1. Handle Dictionaries (e.g., data.customer_name)
+    if type(current) == dictionary {
+      if part in current.keys() {
+        current = current.at(part)
+      } else {
+        return none
+      }
     }
+    // 2. Handle Arrays (e.g., data.collaterals.0.type)
+    else if type(current) == array {
+      // Check if the path part is a valid integer string (e.g., "0", "1")
+      if part.match(regex("^\\d+$")) != none {
+        let idx = int(part)
+        if idx >= 0 and idx < current.len() {
+          current = current.at(idx)
+        } else {
+          return none
+        }
+      } else {
+        return none
+      }
+    }
+    // 3. If it's neither a dict nor an array, the path is invalid
+    else {
+      return none
+    }
+  }
+  current
+}
+"#,
+    );
+
+    typst_code.push_str(&build_page_preamble(page, _data, &mut assets)?);
+
+    for node in content {
+        typst_code.push_str(&render_node(node, _data, &mut assets, 0)?);
+    }
+
     Ok((typst_code, assets))
 }
 

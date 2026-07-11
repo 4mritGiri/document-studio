@@ -1,4 +1,4 @@
-// src/engine/world.rs
+// src/engines/typst/world.rs
 
 use super::fonts::font_assets;
 use std::collections::HashMap;

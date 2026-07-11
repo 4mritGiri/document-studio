@@ -1,5 +1,7 @@
 // src/engines/html/mod.rs
 
+pub mod converter;
+
 use crate::domain::{DocumentRequest, InlineContent, Node};
 use crate::engines::{DocumentEngine, RenderOutput};
 use serde_json::Value;

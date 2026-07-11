@@ -26,6 +26,7 @@ pub struct TableStyle {
     pub stroke: Option<String>,
     pub header_bg: Option<String>,
     pub column_align: Option<Vec<String>>,
+    pub repeat_header: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
