@@ -7,8 +7,8 @@ pub struct PageSettings {
     pub header: Option<PageHeaderFooter>,
     pub footer: Option<PageHeaderFooter>,
     pub background: Option<Vec<super::document::Node>>,
-
     pub watermark: Option<WatermarkSettings>,
+    pub default_font: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

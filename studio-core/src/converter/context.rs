@@ -82,7 +82,15 @@ pub fn format_inline_content(items: &[InlineContent], _data: &Value) -> String {
                 if t.italic.unwrap_or(false) {
                     text = format!("_{}_", text);
                 }
-                result.push_str(&text);
+
+                // NEW: If a specific font is set for this text node, wrap it
+                if let Some(font) = &t.font_family {
+                    // Sanitize font name to prevent breaking Typst syntax
+                    let safe_font = font.replace('"', "\\\"");
+                    result.push_str(&format!("#text(font: \"{}\")[{}]", safe_font, text));
+                } else {
+                    result.push_str(&text);
+                }
             }
             InlineContent::Variable(v) => result.push_str(&resolve_variable_to_typst(&v.key)),
             InlineContent::PageNumber(p) => result.push_str(&render_page_number_format(

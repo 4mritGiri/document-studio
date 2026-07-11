@@ -105,6 +105,7 @@ pub struct TextNode {
     pub text: String,
     pub bold: Option<bool>,
     pub italic: Option<bool>,
+    pub font_family: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

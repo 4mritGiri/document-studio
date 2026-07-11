@@ -152,8 +152,14 @@ fn build_page_preamble(
     if !bg_content.is_empty() {
         out.push_str(&format!(",\n  background: [\n{}\n]", bg_content));
     }
-
-    out.push_str("\n)\n#set text(font: \"Times New Roman\", size: 12pt)\n\n");
+    let font_family = page
+        .as_ref()
+        .and_then(|p| p.default_font.as_deref())
+        .unwrap_or("Times New Roman");
+    out.push_str(&format!(
+        "\n)\n#set text(font: \"{}\", size: 12pt)\n\n",
+        font_family
+    ));
     Ok(out)
 }
 
