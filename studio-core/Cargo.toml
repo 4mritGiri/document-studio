@@ -3,10 +3,11 @@ name = "studio-core"
 version = "0.1.0"
 edition = "2021"
 
+
 [dependencies]
-axum = { version = "0.7", features = ["json"] }
-tokio = { version = "1", features = ["full"] }
-tower-http = { version = "0.6", features = ["trace"] }
+axum = { version = "0.8.9", features = ["json"] }
+tokio = { version = "1.52", features = ["full"] }
+tower-http = { version = "0.6", features = ["trace", "normalize-path"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
@@ -21,7 +22,8 @@ typst-pdf = "0.15.0"
 # Utilities
 uuid = { version = "1", features = ["v4"] }
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "ansi", "time", "local-time"] }
+owo-colors = "4.3.0"
 dotenvy = "0.15"
 comemo = "0.4"
 fontdb = "0.16"

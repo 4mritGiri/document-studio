@@ -13,7 +13,7 @@ def to_data_uri(path: str) -> str:
     return f"data:{mime_type};base64,{encoded}"
 
 
-url = "http://localhost:3000/generate"
+url = "http://localhost:3000/api/v1/generate"
 
 LOGO_PATH = "/media/amrit/SSDAmrit/Builds/local/DocumentStudio/assets/images/logo.png"
 OUTPUT_DIR = "docs/examples/"
