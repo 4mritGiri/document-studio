@@ -8,11 +8,11 @@ pub struct PageSettings {
     pub footer: Option<PageHeaderFooter>,
     pub background: Option<Vec<super::document::Node>>,
 
-    pub watermark: Option<WatermarkConfig>,
+    pub watermark: Option<WatermarkSettings>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct WatermarkConfig {
+pub struct WatermarkSettings {
     pub text: String,
     pub opacity: Option<f32>,      // 0.0 to 1.0 (default 0.2)
     pub angle: Option<f32>,        // degrees (default -45.0)

@@ -1,7 +1,10 @@
 // src/engines/html/converter.rs
 
 use crate::config::MAX_TABLE_LOOP_ROWS;
-use crate::domain::{InlineContent, Node, TableCellContent, TableStyle};
+use crate::domain::{
+    InlineContent, Node, PageHeaderFooter, PageSettings, TableCellContent, TableStyle,
+    WatermarkSettings,
+};
 use serde_json::Value;
 
 /// Escapes text for safe placement in HTML element content or a
@@ -111,13 +114,148 @@ fn resolve_key(key: &str, local: &Value, global: &Value) -> String {
     format!("[MISSING: {}]", html_escape(key))
 }
 
-pub fn json_to_html(content: &[Node], data: &Value) -> Result<String, String> {
-    let mut body = String::from("<div style=\"position:relative;\">\n");
-    for node in content {
-        body.push_str(&render_node(node, data, data)?);
+/// Renders the document body plus, if configured, a letterhead
+/// (`page.background`), a watermark, and a header/footer.
+///
+/// HTML has no native concept of discrete pages — it's one continuously
+/// scrolling document. This is a real, structural limitation compared to
+/// PDF, not something that can be fully worked around, so here's exactly
+/// what this does and doesn't give you:
+///
+/// - `header` / `footer`: rendered once, and marked with a print stylesheet
+///   (`position: fixed` inside `@media print`) so that when the page is
+///   actually printed (or "printed to PDF" from a browser), it repeats on
+///   every physical page — this is a well-established technique and works
+///   in real browser print engines. On screen, it just sits at the top/
+///   bottom of the document.
+/// - `first_page_content` / `first_page_only`: honored for the single
+///   HTML "page" (the whole document counts as page 1).
+/// - `skip_first_page`: since there is no page after "page 1" in a
+///   continuous HTML view, this renders nothing. If you print the result
+///   to multiple physical pages, the same header still repeats on all of
+///   them — CSS has no reliable, cross-browser way to detect physical page
+///   number and vary content accordingly (this is exactly the kind of
+///   thing a real paginating engine like the Typst/PDF path handles
+///   correctly and generic HTML/CSS fundamentally cannot).
+/// - `background` (letterhead shapes/logo) and `watermark`: rendered once,
+///   positioned relative to the top of the document via the existing
+///   `Placed` mechanics.
+pub fn json_to_html(
+    content: &[Node],
+    data: &Value,
+    page: &Option<PageSettings>,
+) -> Result<String, String> {
+    let header = page.as_ref().and_then(|p| p.header.as_ref());
+    let footer = page.as_ref().and_then(|p| p.footer.as_ref());
+    let background = page.as_ref().and_then(|p| p.background.as_ref());
+    let watermark = page.as_ref().and_then(|p| p.watermark.as_ref());
+
+    let mut out = String::new();
+    out.push_str(&print_style_block(header.is_some(), footer.is_some()));
+
+    out.push_str("<div style=\"position:relative;\">\n");
+
+    if let Some(bg_nodes) = background {
+        for n in bg_nodes {
+            out.push_str(&render_node(n, data, data)?);
+        }
     }
-    body.push_str("</div>\n");
-    Ok(body)
+    if let Some(wm) = watermark {
+        out.push_str(&render_watermark(wm));
+    }
+    if let Some(h) = header {
+        out.push_str(&render_header_footer(h, data, "doc-header"));
+    }
+
+    for node in content {
+        out.push_str(&render_node(node, data, data)?);
+    }
+
+    if let Some(f) = footer {
+        out.push_str(&render_header_footer(f, data, "doc-footer"));
+    }
+
+    out.push_str("</div>\n");
+    Ok(out)
+}
+
+fn print_style_block(has_header: bool, has_footer: bool) -> String {
+    let top_margin = if has_header { "3cm" } else { "0" };
+    let bottom_margin = if has_footer { "3cm" } else { "0" };
+    format!(
+        r#"<style>
+  .doc-header, .doc-footer {{ width: 100%; box-sizing: border-box; padding: 4px 12px; }}
+  @media print {{
+    body {{ margin-top: {top}; margin-bottom: {bottom}; }}
+    .doc-header {{ position: fixed; top: 0; left: 0; right: 0; }}
+    .doc-footer {{ position: fixed; bottom: 0; left: 0; right: 0; }}
+  }}
+</style>
+"#,
+        top = top_margin,
+        bottom = bottom_margin
+    )
+}
+
+fn render_header_footer(hf: &PageHeaderFooter, data: &Value, css_class: &str) -> String {
+    if hf.skip_first_page.unwrap_or(false) {
+        // See the doc comment on json_to_html: there's no second "page" to
+        // show this on in a continuous HTML view, so there's nothing to render.
+        return String::new();
+    }
+
+    let content_items: &[InlineContent] = hf
+        .first_page_content
+        .as_deref()
+        .unwrap_or(hf.content.as_slice());
+
+    let text = render_inline(content_items, data, data);
+    let align = match hf.alignment.as_deref() {
+        Some("left") => "left",
+        Some("right") => "right",
+        _ => "center",
+    };
+
+    format!(
+        "<div class=\"{class}\" style=\"text-align:{align};\">{text}</div>\n",
+        class = css_class,
+        align = align,
+        text = text
+    )
+}
+
+fn render_watermark(wm: &WatermarkSettings) -> String {
+    let opacity = wm.opacity.unwrap_or(0.2).clamp(0.0, 1.0);
+    let angle = wm.angle.unwrap_or(-45.0);
+    let size = safe_css_token(wm.font_size.as_deref().unwrap_or("50pt"), "50pt");
+    let color = safe_css_color(wm.color.as_deref().unwrap_or("gray"), "gray");
+    let text = html_escape(&wm.text);
+
+    // angle/opacity come from strongly-typed f32 fields (already validated by
+    // serde deserialization), so no injection risk there — only the
+    // string-typed fields (font_size, color) need the safe_css_* filtering.
+    let (position_css, transform) = match wm.position.as_deref() {
+        Some("top-left") => ("top:5%; left:5%;", format!("rotate({}deg)", angle)),
+        Some("top-right") => ("top:5%; right:5%;", format!("rotate({}deg)", angle)),
+        Some("bottom-left") => ("bottom:5%; left:5%;", format!("rotate({}deg)", angle)),
+        Some("bottom-right") => ("bottom:5%; right:5%;", format!("rotate({}deg)", angle)),
+        _ => (
+            "top:50%; left:50%;",
+            format!("translate(-50%, -50%) rotate({}deg)", angle),
+        ),
+    };
+
+    format!(
+        "<div style=\"position:absolute; {pos} transform:{transform}; font-size:{size}; \
+         color:{color}; opacity:{opacity}; font-weight:bold; white-space:nowrap; \
+         pointer-events:none; z-index:0;\">{text}</div>\n",
+        pos = position_css,
+        transform = transform,
+        size = size,
+        color = color,
+        opacity = opacity,
+        text = text
+    )
 }
 
 fn render_node(node: &Node, local: &Value, global: &Value) -> Result<String, String> {

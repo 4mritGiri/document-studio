@@ -10,7 +10,7 @@ pub struct HtmlEngine;
 
 impl DocumentEngine for HtmlEngine {
     fn render(&self, request: &DocumentRequest) -> Result<RenderOutput, String> {
-        let html_body = converter::json_to_html(&request.content, &request.data)?;
+        let html_body = converter::json_to_html(&request.content, &request.data, &request.page)?;
 
         // template_id is client-controlled and lands in <title> — it needs
         // the same escaping as any other untrusted text.
