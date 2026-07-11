@@ -112,20 +112,29 @@ fn build_page_preamble(
         let size = wm.font_size.as_deref().unwrap_or("50pt");
         let color = wm.color.as_deref().unwrap_or("gray");
 
-        // Escape the watermark text to prevent Typst injection
+        let position = wm.position.as_deref().unwrap_or("center");
+
+        // FIX: Use Typst's alignment syntax correctly
+        // For true center, we need to use both horizontal and vertical alignment
+        let align_expr = match position {
+            "top-left" => "top + left",
+            "top-right" => "top + right",
+            "bottom-left" => "bottom + left",
+            "bottom-right" => "bottom + right",
+            "top-center" => "top + center",
+            "bottom-center" => "bottom + center",
+            "center" => "center + horizon", // FIX: Use center + horizon for true center
+            _ => "center + horizon",        // Default to true center
+        };
+
         let text = escape_typst(&wm.text);
-
-        // Convert opacity (0.0 - 1.0) to a 2-digit hex string (00 - FF)
         let alpha_hex = format!("{:02x}", (opacity.clamp(0.0, 1.0) * 255.0) as u8);
-
-        // Use our clean utility function to get the Typst color expression
         let fill_color = color_expr_with_alpha(color, &alpha_hex);
 
-        // Place a single, perfectly centered watermark in the middle of the page
         bg_content.push_str(&format!(
             r#"
             #place(
-              center,
+              {},
               text(
                 fill: {},
                 size: {},
@@ -135,7 +144,7 @@ fn build_page_preamble(
               ]
             )
             "#,
-            fill_color, size, angle, text
+            align_expr, fill_color, size, angle, text
         ));
     }
 

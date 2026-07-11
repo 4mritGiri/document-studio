@@ -16,6 +16,7 @@ pub struct WatermarkConfig {
     pub text: String,
     pub opacity: Option<f32>,      // 0.0 to 1.0 (default 0.2)
     pub angle: Option<f32>,        // degrees (default -45.0)
+    pub position: Option<String>,  // e.g., "top-left", "center"
     pub font_size: Option<String>, // e.g., "50pt"
     pub color: Option<String>,     // e.g., "gray", "#ff0000"
 }
