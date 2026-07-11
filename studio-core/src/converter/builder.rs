@@ -1,7 +1,7 @@
 // src/converter/builder.rs
 
 use crate::config::MAX_NODE_DEPTH;
-use crate::converter::context::build_header_footer_block;
+use crate::converter::context::{build_header_footer_block, color_expr_with_alpha, escape_typst};
 use crate::converter::nodes::{layout, media, table, text};
 use crate::domain::{Node, PageSettings};
 use serde_json::Value;
@@ -73,6 +73,7 @@ fn build_page_preamble(
     let header = page.as_ref().and_then(|p| p.header.as_ref());
     let footer = page.as_ref().and_then(|p| p.footer.as_ref());
     let background = page.as_ref().and_then(|p| p.background.as_ref());
+    let watermark = page.as_ref().and_then(|p| p.watermark.as_ref()); // NEW
 
     let top = if header.is_some() { "3cm" } else { "2cm" };
     let bottom = if footer.is_some() { "3cm" } else { "2cm" };
@@ -80,6 +81,7 @@ fn build_page_preamble(
     let mut out = format!(
         "#set page(width: 210mm, height: 297mm, margin: (top: {top}, bottom: {bottom}, x: 2cm)"
     );
+
     if let Some(h) = header {
         out.push_str(&format!(
             ",\n  header: {}",
@@ -92,13 +94,56 @@ fn build_page_preamble(
             build_header_footer_block(f, data)
         ));
     }
+
+    // --- NEW: Build the Background (Letterhead + Watermark) ---
+    let mut bg_content = String::new();
+
+    // 1. Add Letterhead/Background shapes (logos, triangles, etc.)
     if let Some(bg) = background {
-        let mut bg_content = String::new();
         for n in bg {
             bg_content.push_str(&render_node(n, data, assets, 0)?);
         }
+    }
+
+    // 2. Add the Watermark (if configured)
+    if let Some(wm) = watermark {
+        let opacity = wm.opacity.unwrap_or(0.2);
+        let angle = wm.angle.unwrap_or(-45.0);
+        let size = wm.font_size.as_deref().unwrap_or("50pt");
+        let color = wm.color.as_deref().unwrap_or("gray");
+
+        // Escape the watermark text to prevent Typst injection
+        let text = escape_typst(&wm.text);
+
+        // Convert opacity (0.0 - 1.0) to a 2-digit hex string (00 - FF)
+        let alpha_hex = format!("{:02x}", (opacity.clamp(0.0, 1.0) * 255.0) as u8);
+
+        // Use our clean utility function to get the Typst color expression
+        let fill_color = color_expr_with_alpha(color, &alpha_hex);
+
+        // Place a single, perfectly centered watermark in the middle of the page
+        bg_content.push_str(&format!(
+            r#"
+            #place(
+              center,
+              text(
+                fill: {},
+                size: {},
+                weight: "bold"
+              )[
+                #rotate({}deg)[{}]
+              ]
+            )
+            "#,
+            fill_color, size, angle, text
+        ));
+    }
+
+    // 3. Inject the combined background into the page settings
+    if !bg_content.is_empty() {
         out.push_str(&format!(",\n  background: [\n{}\n]", bg_content));
     }
+
     out.push_str("\n)\n#set text(font: \"Times New Roman\", size: 12pt)\n\n");
     Ok(out)
 }

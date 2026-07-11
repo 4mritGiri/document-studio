@@ -31,7 +31,7 @@ setup: ## Install and verify all project dependencies
 # ------------------------------------------------------------------------------
 build: ## Build the Rust engine in release mode
 	@echo "🏗️  Building Rust Engine (Release)..."
-	cd studio-core && cargo build --release
+	cd studio-core && cargo build
 
 dev: ## Run the Rust engine in development mode (fast compile, debug info)
 	@echo "🚀 Running Rust Engine (Dev)..."

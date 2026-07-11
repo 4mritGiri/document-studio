@@ -43,6 +43,33 @@ pub fn color_expr(fill: &str) -> String {
     }
 }
 
+/// Converts a color string (hex or named) into a Typst rgb() expression with an alpha channel.
+/// `alpha_hex` should be a 2-digit hex string (e.g., "33" for 20% opacity).
+pub fn color_expr_with_alpha(fill: &str, alpha_hex: &str) -> String {
+    if fill.starts_with('#') {
+        // If it's already an 8-digit hex (e.g., "#ff000033"), use it directly
+        if fill.len() == 9 {
+            format!("rgb(\"{}\")", fill)
+        } else {
+            // Otherwise, strip the '#' and append the alpha hex
+            format!("rgb(\"#{}{}\")", &fill[1..], alpha_hex)
+        }
+    } else {
+        // Map common named colors to their 6-digit hex equivalents + alpha
+        let hex = match fill.to_lowercase().as_str() {
+            "gray" | "grey" => "808080",
+            "black" => "000000",
+            "white" => "ffffff",
+            "red" => "ff0000",
+            "green" => "008000",
+            "blue" => "0000ff",
+            "yellow" => "ffff00",
+            _ => "808080", // Default to gray
+        };
+        format!("rgb(\"#{}{}\")", hex, alpha_hex)
+    }
+}
+
 pub fn format_inline_content(items: &[InlineContent], _data: &Value) -> String {
     let mut result = String::new();
     for item in items {

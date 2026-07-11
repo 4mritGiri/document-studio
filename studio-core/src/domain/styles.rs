@@ -7,6 +7,17 @@ pub struct PageSettings {
     pub header: Option<PageHeaderFooter>,
     pub footer: Option<PageHeaderFooter>,
     pub background: Option<Vec<super::document::Node>>,
+
+    pub watermark: Option<WatermarkConfig>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct WatermarkConfig {
+    pub text: String,
+    pub opacity: Option<f32>,      // 0.0 to 1.0 (default 0.2)
+    pub angle: Option<f32>,        // degrees (default -45.0)
+    pub font_size: Option<String>, // e.g., "50pt"
+    pub color: Option<String>,     // e.g., "gray", "#ff0000"
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]

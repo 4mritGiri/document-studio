@@ -21,8 +21,8 @@ LOGO_PATH = "/media/amrit/SSDAmrit/Builds/local/DocumentStudio/assets/images/log
 OUTPUT_DIR = "docs/examples/"
 PLACEHOLDER_LOGO = to_data_uri(LOGO_PATH)
 template_id = "fintech_letterhead"
-format = "html"
-# format = "pdf"
+# format = "html"
+format = "pdf"
 
 payload = {
     "template_id": template_id,
@@ -134,6 +134,13 @@ payload = {
             "content": [
                 {"text": ""}
             ],  # unused when we render a Columns node below instead
+        },
+        "watermark": {
+            "text": "DRAFT",  # Or "CONFIDENTIAL", "COPY"
+            "opacity": 0.15,  # Very subtle, won't obscure the text
+            # "angle": 120.0,  # Diagonal from bottom-left to top-right
+            "font_size": "60pt",  # Large enough to span the page
+            # "color": "#ff0000",  # Red for high visibility
         },
     },
     "content": [
