@@ -62,7 +62,7 @@ fmt-rust: ## Format Rust code using rustfmt
 # ------------------------------------------------------------------------------
 test-python: ## Run Python E2E tests using uv and pytest
 	@echo "🐍 Running Python E2E tests..."
-	uv run --with requests --with pytest -m pytest tests/e2e/ -v
+	uv run  --with httpx --with pytest -m pytest tests/e2e/ -v -s
 
 lint-python: ## Lint Python tests using flake8
 	@echo "🧹 Linting Python code..."

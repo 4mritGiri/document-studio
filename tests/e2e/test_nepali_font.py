@@ -1,44 +1,39 @@
 # tests/e2e/test_nepali_font.py
-from client import requests
-
-format = "pdf"
-template_id = "nepali_test"
-
-payload = {
-    "template_id": template_id,
-    "format": format,
-    "data": {"name_np": "अमृत गिरी", "address_np": "काठमाडौं, नेपाल"},
-    "page": {
-        # Set the DEFAULT font for the whole document to the Nepali font
-        "default_font": "Noto Sans Devanagari"
-    },
-    "content": [
-        {"type": "heading", "level": 1, "content": [{"text": "नमस्ते (Hello)"}]},
-        {
-            "type": "paragraph",
-            "content": [
-                {"text": "यस पत्रको उद्देश्य "},
-                {"key": "name_np"},
-                {"text": " लाई सम्बोधन गर्नु हो।"},
-            ],
-        },
-        {
-            "type": "paragraph",
-            "content": [
-                # Example of INLINE font switching (back to English for one word)
-                {"text": "Customer Name: ", "font_family": "Times New Roman"},
-                {"key": "name_np"},
-            ],
-        },
-    ],
-}
+import pytest
 
 
-response = requests.post(endpoint="/generate", json=payload)
+@pytest.mark.parametrize("output_format", ["pdf", "html"])
+def test_nepali_font_rendering(api_client, save_file, output_format):
+    """Tests Devanagari font rendering with inline font switching."""
+    template_id = "nepali_font"
 
-if response.status_code == 200 and response.content is not None:
-    with open(f"{template_id}.{format}", "wb") as f:
-        f.write(response.content)
-    print(f"✅ Success! Check '{template_id}.{format}'")
-else:
-    print(f"❌ Error: {response.text}")
+    payload = {
+        "template_id": template_id,
+        "format": output_format,
+        "data": {"name_np": "अमृत गिरी", "address_np": "काठमाडौं, नेपाल"},
+        "page": {"default_font": "Noto Sans Devanagari"},
+        "content": [
+            {"type": "heading", "level": 1, "content": [{"text": "नमस्ते (Hello)"}]},
+            {
+                "type": "paragraph",
+                "content": [
+                    {"text": "यस पत्रको उद्देश्य "},
+                    {"key": "name_np"},
+                    {"text": " लाई सम्बोधन गर्नु हो।"},
+                ],
+            },
+            {
+                "type": "paragraph",
+                "content": [
+                    {"text": "Customer Name: ", "font_family": "Times New Roman"},
+                    {"key": "name_np"},
+                ],
+            },
+        ],
+    }
+
+    response = api_client.post(endpoint="/generate", json=payload)
+    assert response.is_success, f"Failed: {response.text}"
+    assert response.content is not None
+
+    save_file(f"{template_id}.{output_format}", response.content)
