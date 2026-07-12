@@ -334,6 +334,12 @@ fn render_node(node: &Node, local: &Value, global: &Value) -> Result<String, Str
             column_widths,
             gutter,
         } => render_columns(items, column_widths, gutter, local, global),
+
+        Node::QrCode {
+            data,
+            width,
+            alignment,
+        } => render_qr_code_html(data, width, alignment),
     }
 }
 
@@ -676,4 +682,53 @@ fn render_columns(
     }
     html.push_str("</div>\n");
     Ok(html)
+}
+
+/// Generates an inline SVG QR code for HTML output.
+fn render_qr_code_html(
+    data: &str,
+    width: &Option<String>,
+    alignment: &Option<String>,
+) -> Result<String, String> {
+    use qrcode::QrCode;
+
+    // 1. Generate the QR Code matrix
+    let code =
+        QrCode::new(data.as_bytes()).map_err(|e| format!("QR code generation failed: {}", e))?;
+
+    let matrix_size = code.width();
+
+    // 2. Build a highly optimized SVG string using a single <path>
+    let mut svg = format!(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {size} {size}" shape-rendering="crispEdges">"#,
+        size = matrix_size
+    );
+
+    let mut path_data = String::new();
+    for y in 0..matrix_size {
+        for x in 0..matrix_size {
+            if code[(x, y)] == qrcode::Color::Dark {
+                path_data.push_str(&format!("M{} {}h1v1h-1z", x, y));
+            }
+        }
+    }
+    svg.push_str(&format!(r#"<path d="{}" fill="black"/>"#, path_data));
+    svg.push_str("</svg>");
+
+    // 3. Wrap in a div for alignment and sizing
+    let w = width
+        .as_deref()
+        .map(|w| safe_css_token(w, "2.5cm"))
+        .unwrap_or_else(|| "2.5cm".to_string());
+
+    let wrapper_style = match alignment.as_deref() {
+        Some("right") => " style=\"text-align:right;\"",
+        Some("center") => " style=\"text-align:center;\"",
+        _ => "",
+    };
+
+    Ok(format!(
+        "<div{}><div style=\"width:{}; display:inline-block;\">{}</div></div>\n",
+        wrapper_style, w, svg
+    ))
 }

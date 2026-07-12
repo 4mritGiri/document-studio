@@ -176,12 +176,15 @@ pub fn render_node(
         Node::Paragraph { content, alignment } => {
             Ok(text::render_paragraph(content, alignment, data))
         }
+
         Node::Heading {
             level,
             content,
             alignment,
         } => Ok(text::render_heading(*level, content, alignment, data)),
+
         Node::BulletList { items } => Ok(text::render_bullet_list(items, data)),
+
         Node::Table {
             headers,
             rows,
@@ -193,14 +196,18 @@ pub fn render_node(
             "{}\n\n",
             table::format_table(headers, rows, loop_data, row_template, footer, data, style)?
         )),
+
         Node::PageBreak => Ok("#pagebreak()\n\n".to_string()),
+
         Node::Spacer { height } => Ok(format!("#v({})\n\n", height)),
+
         Node::Image {
             src,
             width,
             height,
             alignment,
         } => media::render_image(src, width, height, alignment, assets),
+
         Node::Shape {
             kind,
             width,
@@ -208,16 +215,24 @@ pub fn render_node(
             fill,
             rotate,
         } => Ok(media::render_shape(kind, width, height, fill, rotate)),
+
         Node::Placed {
             anchor,
             dx,
             dy,
             content,
         } => layout::render_placed(anchor, dx, dy, content, data, assets, depth + 1),
+
         Node::Columns {
             items,
             column_widths,
             gutter,
         } => layout::render_columns(items, column_widths, gutter, data, assets, depth + 1),
+
+        Node::QrCode {
+            data: qr_data,
+            width,
+            alignment,
+        } => crate::converter::nodes::qr::render_qr_code(qr_data, width, alignment, assets),
     }
 }

@@ -8,8 +8,11 @@ class ApiResponse:
     def __init__(self, response: httpx.Response):
         self.response = response
         self.status_code = response.status_code
+        self.is_success = 200 <= self.status_code < 300
         self.content: Optional[bytes] = None
         self.json: Optional[Dict[str, Any]] = None
+        self.text: Optional[str] = None
+        self.headers: Dict[str, str] = response.headers
 
         content_type = response.headers.get("Content-Type", "")
         if "application/json" in content_type:
@@ -17,6 +20,7 @@ class ApiResponse:
         else:
             # Explicitly cast or assign the raw bytes
             self.content = response.content
+            self.text = response.text
 
     def __repr__(self):
         return f"<ApiResponse status_code={self.status_code} has_json={self.json is not None}>"
@@ -43,11 +47,11 @@ class APIClient:
             response = client.get(endpoint, params=params)
             return ApiResponse(response)
 
-    def post(self, endpoint: str, data: Dict[str, Any]) -> ApiResponse:
+    def post(self, endpoint: str, json: Dict[str, Any]) -> ApiResponse:
         with httpx.Client(
             base_url=self.base_url, timeout=self.timeout, headers=self.headers
         ) as client:
-            response = client.post(endpoint, json=data)
+            response = client.post(endpoint, json=json)
             # DEBUG: See what the server is actually sending
             print(f"DEBUG: Content-Type: {response.headers.get('Content-Type')}")
             print(f"DEBUG: First 20 bytes: {response.content[:20]}")

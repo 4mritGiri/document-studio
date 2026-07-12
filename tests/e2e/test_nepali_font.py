@@ -34,11 +34,11 @@ payload = {
 }
 
 
-response = requests.post(endpoint="/generate", data=payload)
+response = requests.post(endpoint="/generate", json=payload)
 
 if response.status_code == 200 and response.content is not None:
     with open(f"{template_id}.{format}", "wb") as f:
         f.write(response.content)
     print(f"✅ Success! Check '{template_id}.{format}'")
 else:
-    print(f"❌ Error: {response.response.text}")
+    print(f"❌ Error: {response.text}")

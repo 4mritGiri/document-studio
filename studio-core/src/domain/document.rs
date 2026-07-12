@@ -82,6 +82,13 @@ pub enum Node {
         column_widths: Option<Vec<String>>,
         gutter: Option<String>,
     },
+
+    #[serde(rename = "qr_code")]
+    QrCode {
+        data: String,          // The URL or text to encode (e.g., "https://verify.bank.com/123")
+        width: Option<String>, // e.g., "2.5cm" (Defaults to 2.5cm if omitted)
+        alignment: Option<String>, // "left", "center", "right"
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
