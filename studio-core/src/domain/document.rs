@@ -12,6 +12,12 @@ pub enum OutputFormat {
     Docx, // Future
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct SecurityConfig {
+    pub user_password: Option<String>, // Password required to OPEN the document
+    pub owner_password: Option<String>, // Password required to CHANGE permissions (print/copy)
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DocumentRequest {
     pub template_id: String,
@@ -23,6 +29,9 @@ pub struct DocumentRequest {
 
     #[serde(default)]
     pub format: OutputFormat,
+
+    #[serde(default)]
+    pub security: Option<SecurityConfig>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

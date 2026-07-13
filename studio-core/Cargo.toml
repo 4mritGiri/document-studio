@@ -19,6 +19,7 @@ sha2 = "0.10"
 typst = "0.15.0"
 typst-pdf = "0.15.0"
 qrcode = "0.14"
+lopdf = "0.44" # For PDF post-processing and AES-256 encryption
 
 # Utilities
 uuid = { version = "1", features = ["v4"] }

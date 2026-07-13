@@ -2,6 +2,7 @@
 
 pub mod compiler;
 pub mod fonts;
+pub mod security;
 pub mod world;
 
 use crate::converter::builder::json_to_typst;
@@ -64,10 +65,18 @@ impl DocumentEngine for TypstEngine {
         let final_markup = format!("#let data = json(\"data.json\")\n{}", layout_markup);
 
         // 5. Compile to PDF (pass the fully populated assets map)
-        let pdf_bytes = compiler::render_pdf(&final_markup, assets)?;
+        let raw_pdf_bytes = compiler::render_pdf(&final_markup, assets)?;
+
+        // 6. Apply Security/Encryption if configured
+        let final_bytes = if let Some(sec_config) = &request.security {
+            tracing::info!("Applying AES-256 PDF encryption...");
+            security::apply_security(raw_pdf_bytes, sec_config)?
+        } else {
+            raw_pdf_bytes
+        };
 
         Ok(RenderOutput {
-            bytes: pdf_bytes,
+            bytes: final_bytes,
             mime_type: "application/pdf".to_string(),
             suggested_filename: format!("{}.pdf", request.template_id),
         })
