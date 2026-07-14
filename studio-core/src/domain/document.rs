@@ -98,6 +98,19 @@ pub enum Node {
         width: Option<String>, // e.g., "2.5cm" (Defaults to 2.5cm if omitted)
         alignment: Option<String>, // "left", "center", "right"
     },
+
+    #[serde(rename = "qr")]
+    Qr {
+        /// The QR payload — same InlineContent mechanism as paragraph text, so
+        /// you can mix literal text with {"key": "..."} variable references
+        /// (e.g. build a UPI/payment URL from data fields).
+        content: Vec<InlineContent>,
+        size: Option<String>,             // e.g. "3cm", default "3cm"
+        fill: Option<String>,             // module color, default "#000000"
+        background: Option<String>,       // default "#ffffff"
+        error_correction: Option<String>, // "low" | "medium" | "quartile" | "high"
+        alignment: Option<String>,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

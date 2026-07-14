@@ -15,6 +15,8 @@ pub const MAX_NODE_DEPTH: usize = 32;
 pub const MAX_TABLE_LOOP_ROWS: usize = 5_000;
 pub const HTTP_FETCH_TIMEOUT: Duration = Duration::from_secs(5);
 
+pub const MAX_QR_PAYLOAD_BYTES: usize = 2_000;
+
 #[derive(Clone)]
 pub struct AppState {
     pub typst_engine: Arc<TypstEngine>,

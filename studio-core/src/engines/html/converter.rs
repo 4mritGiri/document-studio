@@ -340,7 +340,63 @@ fn render_node(node: &Node, local: &Value, global: &Value) -> Result<String, Str
             width,
             alignment,
         } => render_qr_code_html(data, width, alignment),
+
+        Node::Qr {
+            content,
+            size,
+            fill,
+            background,
+            error_correction,
+            alignment,
+        } => Ok(render_qr(
+            content,
+            size,
+            fill,
+            background,
+            error_correction,
+            alignment,
+            global,
+        )),
     }
+}
+
+fn render_qr(
+    content: &[InlineContent],
+    size: &Option<String>,
+    fill: &Option<String>,
+    background: &Option<String>,
+    error_correction: &Option<String>,
+    alignment: &Option<String>,
+    data: &Value,
+) -> String {
+    let text = crate::converter::nodes::qr::resolve_plain(content, data);
+    let svg_bytes = match crate::converter::nodes::qr::generate_qr_svg(
+        &text,
+        fill,
+        background,
+        error_correction,
+    ) {
+        Ok(b) => b,
+        Err(e) => return format!("<!-- QR code error: {} -->\n", html_escape(&e)),
+    };
+
+    let svg_str = String::from_utf8_lossy(&svg_bytes).replacen(
+        "<svg",
+        "<svg style=\"width:100%;height:auto;display:block;\"",
+        1,
+    );
+
+    let size_css = safe_css_token(size.as_deref().unwrap_or("3cm"), "3cm");
+    let wrapper = match alignment.as_deref() {
+        Some("right") => " style=\"text-align:right;\"",
+        Some("center") => " style=\"text-align:center;\"",
+        _ => "",
+    };
+
+    format!(
+        "<div{}><div style=\"width:{}; display:inline-block;\">{}</div></div>\n",
+        wrapper, size_css, svg_str
+    )
 }
 
 fn align_style(alignment: &Option<String>) -> String {

@@ -1,10 +1,12 @@
 // src/converter/nodes/layout.rs
 
+use crate::converter::nodes::qr::QrRequest;
 use crate::domain::Node;
 use serde_json::Value;
 use std::collections::HashMap;
 use typst::foundations::Bytes;
 
+#[allow(clippy::too_many_arguments)]
 pub fn render_placed(
     anchor: &Option<String>,
     dx: &Option<String>,
@@ -12,9 +14,10 @@ pub fn render_placed(
     content: &Node,
     data: &Value,
     assets: &mut HashMap<String, Bytes>,
+    qr_requests: &mut Vec<QrRequest>,
     depth: usize,
 ) -> Result<String, String> {
-    let inner = crate::converter::builder::render_node(content, data, assets, depth)?;
+    let inner = crate::converter::builder::render_node(content, data, assets, qr_requests, depth)?;
     let mut args = vec![anchor_expr(anchor).to_string()];
     if let Some(dx) = dx {
         args.push(format!("dx: {}", dx));
@@ -29,12 +32,14 @@ pub fn render_placed(
     ))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn render_columns(
     items: &[Vec<Node>],
     column_widths: &Option<Vec<String>>,
     gutter: &Option<String>,
     data: &Value,
     assets: &mut HashMap<String, Bytes>,
+    qr_requests: &mut Vec<QrRequest>,
     depth: usize,
 ) -> Result<String, String> {
     let col_defs = column_widths
@@ -50,7 +55,11 @@ pub fn render_columns(
         let mut cell = String::new();
         for n in column {
             cell.push_str(&crate::converter::builder::render_node(
-                n, data, assets, depth,
+                n,
+                data,
+                assets,
+                qr_requests,
+                depth,
             )?);
         }
         out.push_str(&format!("  [{}],\n", cell));

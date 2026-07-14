@@ -6,6 +6,7 @@ pub mod security;
 pub mod world;
 
 use crate::converter::builder::json_to_typst;
+use crate::converter::nodes::qr::{self, QrRequest};
 use crate::domain::DocumentRequest;
 use crate::engines::{DocumentEngine, RenderOutput};
 use moka::sync::Cache;
@@ -14,7 +15,12 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 use typst::foundations::Bytes;
 
-type CachedLayout = (String, HashMap<String, Bytes>);
+// The cached value is purely structural: markup + static assets (logos,
+// letterhead shapes) + a list of QR *requests* (not resolved QR bytes).
+// QR requests get resolved against live request data on every call to
+// `render`, after the cache lookup — see the comment on `qr::QrRequest`
+// for why this split exists.
+type CachedLayout = (String, HashMap<String, Bytes>, Vec<QrRequest>);
 
 // Global LRU Cache for compiled layouts (holds up to 100 templates)
 static LAYOUT_CACHE: OnceLock<Cache<String, CachedLayout>> = OnceLock::new();
@@ -22,8 +28,8 @@ static LAYOUT_CACHE: OnceLock<Cache<String, CachedLayout>> = OnceLock::new();
 fn get_cache() -> &'static Cache<String, CachedLayout> {
     LAYOUT_CACHE.get_or_init(|| {
         Cache::builder()
-            .max_capacity(100) // Cache 100 unique layouts
-            .time_to_live(std::time::Duration::from_secs(3600)) // Expire after 1 hour
+            .max_capacity(100)
+            .time_to_live(std::time::Duration::from_secs(3600))
             .build()
     })
 }
@@ -32,36 +38,39 @@ pub struct TypstEngine;
 
 impl DocumentEngine for TypstEngine {
     fn render(&self, request: &DocumentRequest) -> Result<RenderOutput, String> {
-        // 1. Hash the layout (content + page settings) to get a cache key
         let layout_key =
             serde_json::to_string(&(&request.content, &request.page)).map_err(|e| e.to_string())?;
-
         let mut hasher = Sha256::new();
         hasher.update(layout_key.as_bytes());
         let layout_hash = format!("{:x}", hasher.finalize());
 
-        // 2. Check cache for the layout markup AND the assets
-        let (layout_markup, mut assets) = match get_cache().get(&layout_hash) {
+        let (layout_markup, mut assets, qr_requests) = match get_cache().get(&layout_hash) {
             Some(cached) => {
                 tracing::debug!("Cache HIT for layout {}", layout_hash);
-                cached // Returns both the markup string and the HashMap of images
+                cached
             }
             None => {
                 tracing::debug!("Cache MISS for layout {}", layout_hash);
-                // Generate the layout and collect assets (images, etc.)
                 let result = json_to_typst(&request.content, &request.data, &request.page)?;
-
-                // FIX: Cache the entire tuple (markup + assets)
                 get_cache().insert(layout_hash.clone(), result.clone());
                 result
             }
         };
 
-        // 3. Inject the actual data as a virtual JSON file for Typst
+        // Resolve every QR code against the REAL request data, every single
+        // request — this step is deliberately outside the cache. A QR
+        // code's pixel pattern is data, not layout; caching it here would
+        // mean every request after the first cache hit gets the first
+        // request's QR code (e.g. every subsequent invoice would embed the
+        // first invoice's payment QR — a wrong-amount/wrong-reference bug,
+        // not a cosmetic one).
+        for (asset_path, svg_bytes) in qr::resolve_all(&qr_requests, &request.data)? {
+            assets.insert(asset_path, svg_bytes);
+        }
+
         let data_json = serde_json::to_string(&request.data).map_err(|e| e.to_string())?;
         assets.insert("data.json".to_string(), Bytes::new(data_json.into_bytes()));
 
-        // 4. Prepend the data loader to the cached layout
         let final_markup = format!("#let data = json(\"data.json\")\n{}", layout_markup);
 
         // 5. Compile to PDF (pass the fully populated assets map)
