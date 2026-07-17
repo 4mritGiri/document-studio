@@ -7,11 +7,21 @@ pub fn escape_typst(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for c in text.chars() {
         match c {
-            '\\' | '*' | '_' | '#' | '@' | '$' | '<' | '>' | '[' | ']' | '`' | '~' | '^' | '\''
-            | '"' => {
-                out.push('\\');
-                out.push(c);
-            }
+            '\\' => out.push_str("\\\\"),
+            '*' => out.push_str("\\*"),
+            '_' => out.push_str("\\_"),
+            '#' => out.push_str("\\#"),
+            '@' => out.push_str("\\@"),
+            '$' => out.push_str("\\$"),
+            '<' => out.push_str("\\<"),
+            '>' => out.push_str("\\>"),
+            '[' => out.push_str("\\["),
+            ']' => out.push_str("\\]"),
+            '`' => out.push_str("\\`"),
+            '~' => out.push_str("\\~"),
+            '^' => out.push_str("\\^"),
+            '\'' => out.push_str("\\'"),
+            '"' => out.push_str("\\\""),
             _ => out.push(c),
         }
     }
@@ -35,38 +45,59 @@ pub fn wrap_alignment_raw(raw: &str, alignment: &Option<String>) -> String {
     }
 }
 
+// pub fn color_expr(fill: &str) -> String {
+//     if fill.starts_with('#') {
+//         format!("rgb(\"{}\")", fill)
+//     } else {
+//         fill.to_string()
+//     }
+// }
+
+// /// Converts a color string (hex or named) into a Typst rgb() expression with an alpha channel.
+// /// `alpha_hex` should be a 2-digit hex string (e.g., "33" for 20% opacity).
+// pub fn color_expr_with_alpha(fill: &str, alpha_hex: &str) -> String {
+//     if fill.starts_with('#') {
+//         // If it's already an 8-digit hex (e.g., "#ff000033"), use it directly
+//         if fill.len() == 9 {
+//             format!("rgb(\"{}\")", fill)
+//         } else {
+//             // Otherwise, strip the '#' and append the alpha hex
+//             format!("rgb(\"#{}{}\")", &fill[1..], alpha_hex)
+//         }
+//     } else {
+//         // Map common named colors to their 6-digit hex equivalents + alpha
+//         let hex = match fill.to_lowercase().as_str() {
+//             "gray" | "grey" => "808080",
+//             "black" => "000000",
+//             "white" => "ffffff",
+//             "red" => "ff0000",
+//             "green" => "008000",
+//             "blue" => "0000ff",
+//             "yellow" => "ffff00",
+//             _ => "808080", // Default to gray
+//         };
+//         format!("rgb(\"#{}{}\")", hex, alpha_hex)
+//     }
+// }
+
 pub fn color_expr(fill: &str) -> String {
-    if fill.starts_with('#') {
-        format!("rgb(\"{}\")", fill)
+    let safe = safe_color_token(fill, "black");
+    if let Some(hex) = safe.strip_prefix('#') {
+        format!("rgb(\"#{}\")", hex)
     } else {
-        fill.to_string()
+        safe
     }
 }
 
-/// Converts a color string (hex or named) into a Typst rgb() expression with an alpha channel.
-/// `alpha_hex` should be a 2-digit hex string (e.g., "33" for 20% opacity).
-pub fn color_expr_with_alpha(fill: &str, alpha_hex: &str) -> String {
-    if fill.starts_with('#') {
-        // If it's already an 8-digit hex (e.g., "#ff000033"), use it directly
-        if fill.len() == 9 {
-            format!("rgb(\"{}\")", fill)
-        } else {
-            // Otherwise, strip the '#' and append the alpha hex
-            format!("rgb(\"#{}{}\")", &fill[1..], alpha_hex)
-        }
-    } else {
-        // Map common named colors to their 6-digit hex equivalents + alpha
-        let hex = match fill.to_lowercase().as_str() {
-            "gray" | "grey" => "808080",
-            "black" => "000000",
-            "white" => "ffffff",
-            "red" => "ff0000",
-            "green" => "008000",
-            "blue" => "0000ff",
-            "yellow" => "ffff00",
-            _ => "808080", // Default to gray
-        };
+pub fn color_expr_with_alpha(color: &str, alpha_hex: &str) -> String {
+    let safe = safe_color_token(color, "gray");
+    if let Some(hex) = safe.strip_prefix('#') {
         format!("rgb(\"#{}{}\")", hex, alpha_hex)
+    } else {
+        // Named colors don't take an inline alpha suffix — use .transparentize()
+        let alpha_u8 = u8::from_str_radix(alpha_hex, 16).unwrap_or(255);
+        let transparent_pct = 100u32.saturating_sub((alpha_u8 as u32 * 100) / 255);
+        format!("{}.transparentize({}%)", safe, transparent_pct)
     }
 }
 
@@ -83,7 +114,6 @@ pub fn format_inline_content(items: &[InlineContent], _data: &Value) -> String {
                     text = format!("_{}_", text);
                 }
 
-                // NEW: If a specific font is set for this text node, wrap it
                 if let Some(font) = &t.font_family {
                     // Sanitize font name to prevent breaking Typst syntax
                     let safe_font = font.replace('"', "\\\"");
@@ -108,7 +138,6 @@ pub fn build_header_footer_block(hf: &PageHeaderFooter, _data: &Value) -> String
         _ => "center",
     };
 
-    // FIX: Pass _data, but it won't be used for variable resolution anymore
     let default_text = format_header_footer_inline(&hf.content, _data);
     let default_block = format!("align({})[{}]", align, default_text);
     let empty_block = "[]".to_string();
@@ -236,4 +265,46 @@ pub fn resolve_variable_to_typst(key: &str) -> String {
 }}"#,
         escaped_key, escaped_key
     )
+}
+
+// Fix: every such value MUST go through this allowlist before being
+// embedded. Anything that isn't a plain alphanumeric/./-/% token falls back
+// to a safe default instead of ever reaching the generated source.
+pub fn safe_typst_token(value: &str, fallback: &str) -> String {
+    let ok = !value.is_empty()
+        && value.len() <= 32
+        && value
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '%'));
+    if ok {
+        value.to_string()
+    } else {
+        fallback.to_string()
+    }
+}
+
+/// Escapes a value for safe placement INSIDE a Typst string literal
+/// (`"..."`) — e.g. `font: "{value}"`, `link("{value}")`. This is NOT the
+/// same as `escape_typst`, which escapes markup-mode special characters
+/// (`* _ # [ ]` etc.) and is the wrong tool here: applying it to a string
+/// literal both under-escapes (doesn't matter, those chars aren't special
+/// inside `"..."`) and over-escapes (turns `_` into `\_`, which is not a
+/// recognized string-literal escape and corrupts the value). Inside a
+/// string literal, only `\` and `"` need escaping.
+pub fn escape_typst_string_literal(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+/// Validates a color token before it's ever wrapped into a color
+/// expression — closes the same injection class as `safe_typst_token` but
+/// for colors specifically (hex codes or Typst named colors).
+fn safe_color_token(value: &str, fallback: &str) -> String {
+    let ok = !value.is_empty()
+        && value.len() <= 32
+        && value.chars().all(|c| c.is_ascii_alphanumeric() || c == '#');
+    if ok {
+        value.to_string()
+    } else {
+        fallback.to_string()
+    }
 }

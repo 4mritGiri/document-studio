@@ -39,11 +39,39 @@ pub struct TableStyle {
     pub header_bg: Option<String>,
     pub column_align: Option<Vec<String>>,
     pub repeat_header: Option<bool>,
+    /// Alternating row background — e.g. `["#ffffff", "#f3f4f6"]`. Applies
+    /// to loop_data-generated rows (the common case: invoice line items).
+    pub striped_rows: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(untagged)]
 pub enum TableCellContent {
-    Variable { key: String, bold: Option<bool> },
-    Text { text: String, bold: Option<bool> },
+    Variable {
+        key: String,
+        bold: Option<bool>,
+        #[serde(default)]
+        colspan: Option<u32>,
+        #[serde(default)]
+        rowspan: Option<u32>,
+    },
+    Text {
+        text: String,
+        bold: Option<bool>,
+        #[serde(default)]
+        colspan: Option<u32>,
+        #[serde(default)]
+        rowspan: Option<u32>,
+    },
+
+    // Excel-like calculations
+    Formula {
+        formula: String,        // e.g., "=qty * price" or "=sum(total)"
+        format: Option<String>, // e.g., "NPR {value:,.2f}"
+        bold: Option<bool>,
+        #[serde(default)]
+        colspan: Option<u32>,
+        #[serde(default)]
+        rowspan: Option<u32>,
+    },
 }

@@ -35,3 +35,4 @@ base64 = "0.22"
 # HTTP client for allowlisted remote image fetching (blocking variant is used
 # inside tokio::task::spawn_blocking, alongside typst::compile — see main.rs).
 reqwest = { version = "0.12", features = ["rustls-tls", "blocking"] }
+regex = "1.13.1"

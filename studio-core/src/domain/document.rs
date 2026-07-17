@@ -16,6 +16,23 @@ pub enum OutputFormat {
 pub struct SecurityConfig {
     pub user_password: Option<String>, // Password required to OPEN the document
     pub owner_password: Option<String>, // Password required to CHANGE permissions (print/copy)
+
+    /// Permission flags — only meaningful to a viewer once a password is
+    /// set, and only enforceable via the owner password (a user who knows
+    /// only the user password is bound by these; whoever knows the owner
+    /// password can always override them, per the PDF spec). Default is
+    /// deliberately restrictive (false) rather than permissive: previously
+    /// this was hardcoded to grant ALL permissions unconditionally, which
+    /// meant an owner_password provided no actual restriction, only a
+    /// password gate on opening the file.
+    #[serde(default)]
+    pub allow_printing: bool,
+    #[serde(default)]
+    pub allow_copying: bool,
+    #[serde(default)]
+    pub allow_modification: bool,
+    #[serde(default)]
+    pub allow_annotation: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -92,11 +109,16 @@ pub enum Node {
         gutter: Option<String>,
     },
 
+    /// Deprecated in favor of `Qr` (see below) — kept only so existing
+    /// templates don't break. `data` here is a plain, already-resolved
+    /// string (the caller must substitute any dynamic values themselves
+    /// before sending the request), unlike `Qr`'s `content` field which
+    /// supports `{"key": "..."}` variable resolution server-side.
     #[serde(rename = "qr_code")]
     QrCode {
-        data: String,          // The URL or text to encode (e.g., "https://verify.bank.com/123")
-        width: Option<String>, // e.g., "2.5cm" (Defaults to 2.5cm if omitted)
-        alignment: Option<String>, // "left", "center", "right"
+        data: String,
+        width: Option<String>,
+        alignment: Option<String>,
     },
 
     #[serde(rename = "qr")]
@@ -127,7 +149,7 @@ pub struct PageNumberNode {
     pub format: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct TextNode {
     #[serde(rename = "type")]
     pub node_type: Option<String>,
@@ -135,6 +157,17 @@ pub struct TextNode {
     pub bold: Option<bool>,
     pub italic: Option<bool>,
     pub font_family: Option<String>,
+
+    /// e.g. "14pt", "1.2em". Validated via safe_typst_token before use —
+    /// never trust this directly into generated source.
+    pub size: Option<String>,
+    /// e.g. "#1a1a1a", "red". Validated via color_expr before use.
+    pub color: Option<String>,
+    pub underline: Option<bool>,
+    pub strike: Option<bool>,
+    /// If set, wraps this text run in a hyperlink. Validated/escaped as a
+    /// Typst string literal (escape_typst_string_literal), not markup text.
+    pub link: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

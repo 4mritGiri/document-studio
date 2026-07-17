@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use studio_core::{
     api::router::create_router,
-    config::{AppState, MAX_BODY_BYTES, MAX_CONCURRENT_RENDERS},
+    config::{AppState, MAX_BODY_BYTES},
 };
 use tokio::sync::Semaphore;
 use tower_http::normalize_path::NormalizePathLayer;
@@ -31,7 +31,7 @@ async fn main() {
     let state = AppState {
         typst_engine: Arc::new(studio_core::engines::typst::TypstEngine),
         html_engine: Arc::new(studio_core::engines::html::HtmlEngine),
-        render_semaphore: Arc::new(Semaphore::new(MAX_CONCURRENT_RENDERS)),
+        render_semaphore: Arc::new(Semaphore::new(studio_core::config::max_concurrent_renders())),
         api_key: Arc::new(api_key),
     };
 

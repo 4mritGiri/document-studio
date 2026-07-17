@@ -1,5 +1,6 @@
 // src/converter/nodes/layout.rs
 
+use crate::converter::context::safe_typst_token;
 use crate::converter::nodes::qr::QrRequest;
 use crate::domain::Node;
 use serde_json::Value;
@@ -20,10 +21,10 @@ pub fn render_placed(
     let inner = crate::converter::builder::render_node(content, data, assets, qr_requests, depth)?;
     let mut args = vec![anchor_expr(anchor).to_string()];
     if let Some(dx) = dx {
-        args.push(format!("dx: {}", dx));
+        args.push(format!("dx: {}", safe_typst_token(dx, "0pt")));
     }
     if let Some(dy) = dy {
-        args.push(format!("dy: {}", dy));
+        args.push(format!("dy: {}", safe_typst_token(dy, "0pt")));
     }
     Ok(format!(
         "#place(\n  {},\n)[\n{}\n]\n\n",
@@ -44,12 +45,17 @@ pub fn render_columns(
 ) -> Result<String, String> {
     let col_defs = column_widths
         .as_ref()
-        .map(|w| w.join(", "))
+        .map(|w| {
+            w.iter()
+                .map(|x| safe_typst_token(x, "1fr"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
         .unwrap_or_else(|| vec!["1fr"; items.len()].join(", "));
+    let gutter_safe = safe_typst_token(gutter.as_deref().unwrap_or("1em"), "1em");
     let mut out = format!(
         "#grid(\n  columns: ({}),\n  gutter: {},\n",
-        col_defs,
-        gutter.as_deref().unwrap_or("1em")
+        col_defs, gutter_safe
     );
     for column in items {
         let mut cell = String::new();

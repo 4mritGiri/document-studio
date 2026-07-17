@@ -134,9 +134,7 @@ fn resolve_key(key: &str, local: &Value, global: &Value) -> String {
 ///   continuous HTML view, this renders nothing. If you print the result
 ///   to multiple physical pages, the same header still repeats on all of
 ///   them — CSS has no reliable, cross-browser way to detect physical page
-///   number and vary content accordingly (this is exactly the kind of
-///   thing a real paginating engine like the Typst/PDF path handles
-///   correctly and generic HTML/CSS fundamentally cannot).
+///   number and vary content accordingly.
 /// - `background` (letterhead shapes/logo) and `watermark`: rendered once,
 ///   positioned relative to the top of the document via the existing
 ///   `Placed` mechanics.
@@ -199,8 +197,6 @@ fn print_style_block(has_header: bool, has_footer: bool) -> String {
 
 fn render_header_footer(hf: &PageHeaderFooter, data: &Value, css_class: &str) -> String {
     if hf.skip_first_page.unwrap_or(false) {
-        // See the doc comment on json_to_html: there's no second "page" to
-        // show this on in a continuous HTML view, so there's nothing to render.
         return String::new();
     }
 
@@ -231,9 +227,6 @@ fn render_watermark(wm: &WatermarkSettings) -> String {
     let color = safe_css_color(wm.color.as_deref().unwrap_or("gray"), "gray");
     let text = html_escape(&wm.text);
 
-    // angle/opacity come from strongly-typed f32 fields (already validated by
-    // serde deserialization), so no injection risk there — only the
-    // string-typed fields (font_size, color) need the safe_css_* filtering.
     let (position_css, transform) = match wm.position.as_deref() {
         Some("top-left") => ("top:5%; left:5%;", format!("rotate({}deg)", angle)),
         Some("top-right") => ("top:5%; right:5%;", format!("rotate({}deg)", angle)),
@@ -335,11 +328,29 @@ fn render_node(node: &Node, local: &Value, global: &Value) -> Result<String, Str
             gutter,
         } => render_columns(items, column_widths, gutter, local, global),
 
+        // Deprecated, kept only for backward compatibility with existing
+        // templates. Previously this had its OWN separate, hand-rolled SVG
+        // path-builder (render_qr_code_html) duplicating what `render_qr`
+        // already does — same duplication that was fixed on the Typst
+        // engine side, now fixed here too. `data` is already a final,
+        // resolved plain string (the legacy variant never supported
+        // {"key": "..."} resolution), so it's wrapped as one literal text run.
         Node::QrCode {
             data,
             width,
             alignment,
-        } => render_qr_code_html(data, width, alignment),
+        } => Ok(render_qr(
+            &[InlineContent::Text(crate::domain::TextNode {
+                text: data.clone(),
+                ..Default::default()
+            })],
+            width,
+            &None,
+            &None,
+            &None,
+            alignment,
+            global,
+        )),
 
         Node::Qr {
             content,
@@ -420,12 +431,39 @@ fn render_inline(items: &[InlineContent], local: &Value, global: &Value) -> Stri
                 if t.italic.unwrap_or(false) {
                     text = format!("<em>{}</em>", text);
                 }
+                if t.underline.unwrap_or(false) {
+                    text = format!("<u>{}</u>", text);
+                }
+                if t.strike.unwrap_or(false) {
+                    text = format!("<s>{}</s>", text);
+                }
+
+                let mut style = String::new();
+                if let Some(s) = &t.size {
+                    style.push_str(&format!("font-size:{};", safe_css_token(s, "1em")));
+                }
+                if let Some(c) = &t.color {
+                    style.push_str(&format!("color:{};", safe_css_color(c, "black")));
+                }
+                if let Some(f) = &t.font_family {
+                    style.push_str(&format!("font-family:{};", html_escape(f)));
+                }
+                if !style.is_empty() {
+                    text = format!("<span style=\"{}\">{}</span>", style, text);
+                }
+
+                if let Some(url) = &t.link {
+                    let safe_url = if url.starts_with("https://") || url.starts_with("http://") {
+                        html_escape(url)
+                    } else {
+                        "#".to_string()
+                    };
+                    text = format!("<a href=\"{}\">{}</a>", safe_url, text);
+                }
+
                 out.push_str(&text);
             }
             InlineContent::Variable(v) => out.push_str(&resolve_key(&v.key, local, global)),
-            // HTML output has no fixed pagination, so there's no true page
-            // number to render; leave a placeholder token a client-side
-            // paginator (or a "print" stylesheet) could substitute later.
             InlineContent::PageNumber(_) => out.push_str("{{page}}"),
         }
     }
@@ -483,6 +521,8 @@ fn render_table(
         .and_then(|s| s.header_bg.as_deref())
         .map(|c| safe_css_color(c, "#f3f4f6"));
 
+    let striped = style.as_ref().and_then(|s| s.striped_rows.as_ref());
+
     let mut html = format!(
         "<table style=\"width:{}; border-collapse: collapse;\">\n",
         width
@@ -523,6 +563,7 @@ fn render_table(
                     local,
                     global,
                     None,
+                    None,
                 ));
             }
             html.push_str("    </tr>\n");
@@ -531,13 +572,20 @@ fn render_table(
 
     if let (Some(path), Some(template)) = (loop_data, row_template) {
         if let Some(Value::Array(items)) = get_value_by_path(global, path) {
-            // Bound how many rows a single table can generate — this is the
-            // HTML-engine equivalent of the row cap enforced elsewhere; a
-            // multi-million-row `data` array shouldn't be able to produce a
-            // multi-million-row HTML table.
             for (row_idx, item) in items.iter().take(MAX_TABLE_LOOP_ROWS).enumerate() {
                 html.push_str("    <tr>\n");
                 for (col_idx, cell) in template.iter().enumerate() {
+                    // Alternating row background — matches the Typst
+                    // engine's `striped_rows`, keyed off the actual body
+                    // row index (row_idx is already 0-based within the
+                    // loop-generated body, independent of the header row).
+                    let stripe_fill = striped.and_then(|colors| {
+                        if colors.is_empty() {
+                            None
+                        } else {
+                            Some(colors[row_idx % colors.len()].as_str())
+                        }
+                    });
                     html.push_str(&render_table_cell(
                         cell,
                         style,
@@ -547,6 +595,7 @@ fn render_table(
                         item,
                         global,
                         Some(row_idx),
+                        stripe_fill,
                     ));
                 }
                 html.push_str("    </tr>\n");
@@ -559,6 +608,13 @@ fn render_table(
     if let Some(ftr) = footer {
         html.push_str("  <tfoot>\n    <tr>\n");
         for (idx, cell) in ftr.iter().enumerate() {
+            // Force a neutral background on the totals row so a striped
+            // body can't bleed visual noise into it — same as Typst engine.
+            let footer_fill = if striped.is_some() {
+                Some("white")
+            } else {
+                None
+            };
             html.push_str(&render_table_cell(
                 cell,
                 style,
@@ -568,6 +624,7 @@ fn render_table(
                 local,
                 global,
                 None,
+                footer_fill,
             ));
         }
         html.push_str("    </tr>\n  </tfoot>\n");
@@ -587,10 +644,17 @@ fn render_table_cell(
     local: &Value,
     global: &Value,
     index: Option<usize>,
+    fill_override: Option<&str>,
 ) -> String {
     let align = cell_align(style, idx);
-    let (value, bold) = match cell {
-        TableCellContent::Variable { key, bold } => {
+
+    let (value, bold, colspan, rowspan) = match cell {
+        TableCellContent::Variable {
+            key,
+            bold,
+            colspan,
+            rowspan,
+        } => {
             let v = if key == "__index" {
                 index.map(|i| (i + 1).to_string()).unwrap_or_default()
             } else if key == "__index_0" {
@@ -598,18 +662,66 @@ fn render_table_cell(
             } else {
                 resolve_key(key, local, global)
             };
-            (v, bold.unwrap_or(false))
+            (v, bold.unwrap_or(false), *colspan, *rowspan)
         }
-        TableCellContent::Text { text, bold } => (html_escape(text), bold.unwrap_or(false)),
+        TableCellContent::Text {
+            text,
+            bold,
+            colspan,
+            rowspan,
+        } => (html_escape(text), bold.unwrap_or(false), *colspan, *rowspan),
+        TableCellContent::Formula {
+            formula,
+            format: fmt,
+            bold,
+            colspan,
+            rowspan,
+        } => {
+            // For HTML, we evaluate everything in Rust
+            let raw_result =
+                crate::converter::calculations::evaluate_formula(formula, Some(local), &[]);
+
+            let formatted = if let Some(f) = fmt {
+                f.replace("{value}", &raw_result)
+            } else {
+                raw_result
+            };
+            (
+                html_escape(&formatted),
+                bold.unwrap_or(false),
+                *colspan,
+                *rowspan,
+            )
+        }
     };
+
     let value = if bold {
         format!("<strong>{}</strong>", value)
     } else {
         value
     };
+
+    let colspan_attr = colspan
+        .filter(|c| *c > 1)
+        .map(|c| format!(" colspan=\"{}\"", c))
+        .unwrap_or_default();
+    let rowspan_attr = rowspan
+        .filter(|r| *r > 1)
+        .map(|r| format!(" rowspan=\"{}\"", r))
+        .unwrap_or_default();
+    let bg_style = fill_override
+        .map(|c| format!(" background-color:{};", safe_css_color(c, "white")))
+        .unwrap_or_default();
+
     format!(
-        "      <td style=\"border:{}; padding:{}; text-align:{};\">{}</td>\n",
-        border_css, inset, align, value
+        "      <td{colspan}{rowspan} style=\"border:{border}; padding:{inset}; text-align:{align};{bg}\">{value}</td>\n",
+        colspan = colspan_attr,
+        rowspan = rowspan_attr,
+        border = border_css,
+        inset = inset,
+        align = align,
+        bg = bg_style,
+        value = value,
     )
 }
 
@@ -738,53 +850,4 @@ fn render_columns(
     }
     html.push_str("</div>\n");
     Ok(html)
-}
-
-/// Generates an inline SVG QR code for HTML output.
-fn render_qr_code_html(
-    data: &str,
-    width: &Option<String>,
-    alignment: &Option<String>,
-) -> Result<String, String> {
-    use qrcode::QrCode;
-
-    // 1. Generate the QR Code matrix
-    let code =
-        QrCode::new(data.as_bytes()).map_err(|e| format!("QR code generation failed: {}", e))?;
-
-    let matrix_size = code.width();
-
-    // 2. Build a highly optimized SVG string using a single <path>
-    let mut svg = format!(
-        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {size} {size}" shape-rendering="crispEdges">"#,
-        size = matrix_size
-    );
-
-    let mut path_data = String::new();
-    for y in 0..matrix_size {
-        for x in 0..matrix_size {
-            if code[(x, y)] == qrcode::Color::Dark {
-                path_data.push_str(&format!("M{} {}h1v1h-1z", x, y));
-            }
-        }
-    }
-    svg.push_str(&format!(r#"<path d="{}" fill="black"/>"#, path_data));
-    svg.push_str("</svg>");
-
-    // 3. Wrap in a div for alignment and sizing
-    let w = width
-        .as_deref()
-        .map(|w| safe_css_token(w, "2.5cm"))
-        .unwrap_or_else(|| "2.5cm".to_string());
-
-    let wrapper_style = match alignment.as_deref() {
-        Some("right") => " style=\"text-align:right;\"",
-        Some("center") => " style=\"text-align:center;\"",
-        _ => "",
-    };
-
-    Ok(format!(
-        "<div{}><div style=\"width:{}; display:inline-block;\">{}</div></div>\n",
-        wrapper_style, w, svg
-    ))
 }

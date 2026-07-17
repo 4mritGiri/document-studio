@@ -7,7 +7,6 @@ use tokio::sync::Semaphore;
 
 // --- Production tunables ---
 pub const MAX_BODY_BYTES: usize = 25 * 1024 * 1024;
-pub const MAX_CONCURRENT_RENDERS: usize = 4;
 pub const RENDER_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub const MAX_IMAGE_BYTES: usize = 8 * 1024 * 1024;
@@ -23,4 +22,11 @@ pub struct AppState {
     pub html_engine: Arc<HtmlEngine>,
     pub render_semaphore: Arc<Semaphore>,
     pub api_key: Arc<String>,
+}
+
+pub fn max_concurrent_renders() -> usize {
+    std::env::var("MAX_CONCURRENT_RENDERS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(4)
 }

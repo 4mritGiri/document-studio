@@ -1,7 +1,9 @@
 // src/converter/builder.rs
 
 use crate::config::MAX_NODE_DEPTH;
-use crate::converter::context::{build_header_footer_block, color_expr_with_alpha, escape_typst};
+use crate::converter::context::{
+    build_header_footer_block, color_expr_with_alpha, escape_typst, safe_typst_token,
+};
 use crate::converter::nodes::qr::{self, QrRequest};
 use crate::converter::nodes::{layout, media, table, text};
 use crate::domain::{Node, PageSettings};
@@ -114,7 +116,9 @@ fn build_page_preamble(
     if let Some(wm) = watermark {
         let opacity = wm.opacity.unwrap_or(0.2);
         let angle = wm.angle.unwrap_or(-45.0);
-        let size = wm.font_size.as_deref().unwrap_or("50pt");
+        // font_size is a client-controlled string and was previously
+        // interpolated raw — same injection class described in context.rs.
+        let size = safe_typst_token(wm.font_size.as_deref().unwrap_or("50pt"), "50pt");
         let color = wm.color.as_deref().unwrap_or("gray");
         let position = wm.position.as_deref().unwrap_or("center");
 
@@ -190,7 +194,7 @@ pub fn render_node(
             table::format_table(headers, rows, loop_data, row_template, footer, data, style)?
         )),
         Node::PageBreak => Ok("#pagebreak()\n\n".to_string()),
-        Node::Spacer { height } => Ok(format!("#v({})\n\n", height)),
+        Node::Spacer { height } => Ok(format!("#v({})\n\n", safe_typst_token(height, "1em"))),
         Node::Image {
             src,
             width,
@@ -248,10 +252,27 @@ pub fn render_node(
             alignment,
             qr_requests,
         )),
+        // QrCode is kept only for backward compatibility with existing
+        // templates — it now delegates to the exact same safe, deferred
+        // path as `Qr` instead of its own (previously cache-unsafe,
+        // unvalidated-size) implementation. See qr.rs for why.
         Node::QrCode {
             data: qr_data,
             width,
             alignment,
-        } => crate::converter::nodes::qr::render_qr_code(qr_data, width, alignment, assets),
+        } => Ok(qr::render_qr_placeholder(
+            &[crate::domain::InlineContent::Text(
+                crate::domain::TextNode {
+                    text: qr_data.clone(),
+                    ..Default::default()
+                },
+            )],
+            width,
+            &None,
+            &None,
+            &None,
+            alignment,
+            qr_requests,
+        )),
     }
 }
