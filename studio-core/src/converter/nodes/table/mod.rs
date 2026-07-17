@@ -19,6 +19,7 @@ pub fn format_table(
 ) -> Result<String, String> {
     let mut table_code = "#table(\n".to_string();
 
+    // 1. Determine column count safely
     let col_count = headers
         .as_ref()
         .map(|h| h.len())
@@ -26,6 +27,7 @@ pub fn format_table(
         .or_else(|| rows.as_ref().and_then(|r| r.first()).map(|row| row.len()))
         .unwrap_or(1);
 
+    // 2. Build column definitions
     let col_defs = if let Some(s) = style.as_ref() {
         if let Some(cols) = &s.columns {
             cols.iter()
@@ -40,6 +42,7 @@ pub fn format_table(
     };
     table_code.push_str(&format!("  columns: ({col_defs}),\n"));
 
+    // 3. Base styling
     let inset = safe_typst_token(
         style
             .as_ref()
@@ -67,6 +70,7 @@ pub fn format_table(
         .and_then(|s| s.repeat_header)
         .unwrap_or(false);
 
+    // 4. Row striping logic
     if let Some(stripes) = striped {
         if !stripes.is_empty() {
             let stripe_colors: Vec<String> = stripes.iter().map(|c| color_expr(c)).collect();
@@ -82,13 +86,13 @@ pub fn format_table(
         }
     }
 
+    // 5. Header generation
     if let Some(hdrs) = headers {
         if repeat {
             table_code.push_str("  table.header(\n");
         }
         for (idx, h) in hdrs.iter().enumerate() {
             let h_escaped = escape_typst(h);
-
             let h_aligned = match style
                 .as_ref()
                 .and_then(|s| s.column_align.as_ref())
@@ -117,12 +121,14 @@ pub fn format_table(
         }
     }
 
+    // 6. Pre-fetch all rows for footer aggregations
     let all_rows = if let (Some(path), Some(_)) = (loop_data, row_template) {
         calculations::get_all_rows(data, path).unwrap_or_default()
     } else {
         Vec::new()
     };
 
+    // 7. Static rows
     if let Some(static_rows) = rows {
         for row in static_rows {
             for (idx, c) in row.iter().enumerate() {
@@ -132,22 +138,24 @@ pub fn format_table(
         }
     }
 
+    // 8. Dynamic loop rows (FIXED: Wrapped in tuple and spread with ..)
     if let (Some(path), Some(template)) = (loop_data, row_template) {
         let escaped_path = path.replace('\\', "\\\\").replace('"', "\\\"");
         table_code.push_str(&format!(
-            "  {{\n    let __rows = safe-get(data, \"{}\")\n    if type(__rows) == array {{\n      for __idx in range(__rows.len()) {{\n        let item = __rows.at(__idx)\n",
+            "  ..{{\n    let __rows = safe-get(data, \"{}\")\n    if type(__rows) == array {{\n      for __idx in range(__rows.len()) {{\n        let item = __rows.at(__idx)\n        (\n",
             escaped_path
         ));
         for (idx, c) in template.iter().enumerate() {
             let val = cell::render_loop_cell(c, style, idx);
             table_code.push_str(&format!(
-                "        {}\n",
+                "          {},\n",
                 cell::wrap_cell_span(c, &val, None)
             ));
         }
-        table_code.push_str("      }\n    }\n  },\n");
+        table_code.push_str("        )\n      }\n    }\n  },\n");
     }
 
+    // 9. Footer rows
     if let Some(ftr) = footer {
         for (idx, c) in ftr.iter().enumerate() {
             let val = cell::render_footer_cell(c, style, idx, &all_rows);
@@ -165,6 +173,7 @@ pub fn format_table(
 
     table_code.push_str(")\n");
 
+    // 10. Width wrapper
     if let Some(width) = style.as_ref().and_then(|s| s.width.as_deref()) {
         let safe_width = safe_typst_token(width, "100%");
         table_code = format!("#block(width: {})[\n{}\n]", safe_width, table_code);

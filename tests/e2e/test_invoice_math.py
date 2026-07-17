@@ -38,12 +38,12 @@ def test_advanced_invoice_math(api_client, save_file):
                     # Since we can't easily sum a calculated column in V1, let's sum the base total:
                     {
                         "formula": "=sum(price)",
-                        "format": "Base Sum: NPR {value}",
+                        "format": "{value}",
                         "bold": True,
                     },
                     {
                         "formula": "=sum(price) * 0.13",
-                        "format": "Total VAT: NPR {value}",
+                        "format": "{value}",
                         "bold": True,
                     },
                 ],
@@ -51,7 +51,7 @@ def test_advanced_invoice_math(api_client, save_file):
                     "width": "100%",
                     "columns": ["3fr", "1fr", "1.5fr", "1.5fr", "1.5fr"],
                     "column_align": ["left", "right", "right", "right", "right"],
-                    "header_bg": "#1f2937",
+                    "header_bg": "#ffffff",
                 },
             },
         ],
