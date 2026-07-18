@@ -66,8 +66,10 @@ pub enum TableCellContent {
 
     // Excel-like calculations
     Formula {
-        formula: String,        // e.g., "=qty * price" or "=sum(total)"
-        format: Option<String>, // e.g., "NPR {value:,.2f}"
+        formula: String,
+        format: Option<String>, // Template like "NPR {value}" or "{value} €"
+        locale: Option<String>, // NEW: "en-US", "en-IN", "en-NP", "de-DE", etc.
+        decimal_places: Option<usize>, // NEW: Number of decimal places (default 2)
         bold: Option<bool>,
         #[serde(default)]
         colspan: Option<u32>,

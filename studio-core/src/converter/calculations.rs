@@ -184,6 +184,26 @@ impl Lexer {
                     }
                     Ok(Token::StringLit(s))
                 }
+
+                //  Allow commas in numbers, but strip them before parsing
+                _ if c.is_ascii_digit() || c == '.' || c == ',' => {
+                    let mut num_str = String::new();
+                    while let Some(nc) = self.peek() {
+                        if nc.is_ascii_digit() || nc == '.' || nc == ',' {
+                            if nc != ',' {
+                                num_str.push(nc);
+                            } // Ignore commas
+                            self.advance();
+                        } else {
+                            break;
+                        }
+                    }
+                    num_str
+                        .parse::<f64>()
+                        .map(Token::Number)
+                        .map_err(|_| "Invalid number".to_string())
+                }
+
                 _ if c.is_ascii_digit() || c == '.' => {
                     let mut num_str = String::new();
                     while let Some(nc) = self.peek() {
@@ -695,4 +715,118 @@ fn get_num(row: &Value, key: &str) -> Option<f64> {
         }
         None
     })
+}
+
+// ==========================================
+// LOCALE-AWARE NUMBER FORMATTER
+// ==========================================
+
+pub struct LocaleConfig {
+    pub thousands_sep: char,
+    pub decimal_sep: char,
+    /// True for Devanagari-script locales (Nepali, Hindi, etc.)
+    /// which use asymmetric grouping (e.g., 10,00,000 for Lakhs/Crores).
+    pub devanagari_grouping: bool,
+}
+
+pub fn get_locale_config(locale: &str) -> LocaleConfig {
+    match locale.to_lowercase().as_str() {
+        // Devanagari / South Asian (Lakhs & Crores: 10,00,000.00)
+        // Covers Nepal (ne-NP, en-NP), India (hi-IN, en-IN), etc.
+        "ne-np" | "en-np" | "hi-in" | "en-in" | "mr-in" => LocaleConfig {
+            thousands_sep: ',',
+            decimal_sep: '.',
+            devanagari_grouping: true,
+        },
+        // European (1.000.000,00)
+        "de-de" | "fr-fr" | "es-es" | "it-it" | "pt-br" => LocaleConfig {
+            thousands_sep: '.',
+            decimal_sep: ',',
+            devanagari_grouping: false,
+        },
+        // Swiss (1'000'000.00)
+        "fr-ch" | "de-ch" => LocaleConfig {
+            thousands_sep: '\'',
+            decimal_sep: '.',
+            devanagari_grouping: false,
+        },
+        // Default to International/US (1,000,000.00)
+        _ => LocaleConfig {
+            thousands_sep: ',',
+            decimal_sep: '.',
+            devanagari_grouping: false,
+        },
+    }
+}
+
+/// Formats a number dynamically based on locale and decimal precision.
+pub fn format_number(num: f64, locale: &str, decimal_places: Option<usize>) -> String {
+    let config = get_locale_config(locale);
+    let is_negative = num < 0.0;
+    let abs_num = num.abs();
+
+    // Round to specified decimal places (default 2)
+    let decimals = decimal_places.unwrap_or(2);
+    let multiplier = 10f64.powi(decimals as i32);
+    let rounded = (abs_num * multiplier).round() / multiplier;
+
+    // Split into integer and decimal parts
+    let formatted_str = format!("{:.prec$}", rounded, prec = decimals);
+    let parts: Vec<&str> = formatted_str.split('.').collect();
+    let int_part = parts[0].to_string();
+    let dec_part = if parts.len() > 1 && decimals > 0 {
+        parts[1]
+    } else {
+        ""
+    };
+
+    let len = int_part.len();
+    let mut result = String::new();
+
+    if config.devanagari_grouping {
+        // Devanagari system: First 3 digits, then groups of 2 (e.g., 10,00,000)
+        if len <= 3 {
+            result = int_part;
+        } else {
+            result.push_str(&int_part[len - 3..]);
+            let mut remaining = &int_part[..len - 3];
+            while remaining.len() > 2 {
+                result = format!(
+                    "{}{}{}",
+                    &remaining[remaining.len() - 2..],
+                    config.thousands_sep,
+                    result
+                );
+                remaining = &remaining[..remaining.len() - 2];
+            }
+            if !remaining.is_empty() {
+                result = format!("{}{}{}", remaining, config.thousands_sep, result);
+            }
+        }
+    } else {
+        // Standard 3-digit international grouping (e.g., 1,000,000)
+        let mut chars = int_part.chars().rev().peekable();
+        let mut count = 0;
+        while let Some(c) = chars.next() {
+            if count == 3 {
+                result.push(config.thousands_sep);
+                count = 0;
+            }
+            result.push(c);
+            count += 1;
+        }
+        result = result.chars().rev().collect();
+    }
+
+    let final_str = if dec_part.is_empty() || decimals == 0 {
+        result
+    } else {
+        format!("{}{}{}", result, config.decimal_sep, dec_part)
+    };
+
+    if is_negative {
+        format!("-{}", final_str)
+    } else {
+        final_str
+    }
 }

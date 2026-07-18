@@ -144,21 +144,26 @@ pub fn format_table(
         }
     }
 
-    // 8. Dynamic loop rows (FIXED: Wrapped in tuple and spread with ..)
-    if let (Some(path), Some(template)) = (loop_data, row_template) {
-        let escaped_path = path.replace('\\', "\\\\").replace('"', "\\\"");
-        table_code.push_str(&format!(
-            "  ..{{\n    let __rows = safe-get(data, \"{}\")\n    if type(__rows) == array {{\n      for __idx in range(__rows.len()) {{\n        let item = __rows.at(__idx)\n        (\n",
-            escaped_path
-        ));
-        for (idx, c) in template.iter().enumerate() {
-            let val = cell::render_loop_cell(c, style, idx, &transpile_ctx);
-            table_code.push_str(&format!(
-                "          {},\n",
-                cell::wrap_cell_span(c, &val, None)
-            ));
+    // 8. Dynamic loop rows (Evaluated in Rust for perfect formatting)
+    if let (Some(_path), Some(template)) = (loop_data, row_template) {
+        // Iterate over the data in Rust, passing the row_index
+        for (row_index, item) in all_rows.iter().enumerate() {
+            for (idx, c) in template.iter().enumerate() {
+                let val = cell::render_loop_cell(
+                    c,
+                    style,
+                    idx,
+                    &transpile_ctx,
+                    item,
+                    &all_rows,
+                    row_index,
+                );
+                table_code.push_str(&format!(
+                    "          {},\n",
+                    cell::wrap_cell_span(c, &val, None)
+                ));
+            }
         }
-        table_code.push_str("        )\n      }\n    }\n  },\n");
     }
 
     // 9. Footer rows

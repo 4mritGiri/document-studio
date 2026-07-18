@@ -1,8 +1,7 @@
 // src/converter/nodes/table/cell.rs
 
-use crate::converter::calculations::{evaluate_formula, TranspileContext};
+use crate::converter::calculations::{evaluate_formula, format_number};
 use crate::converter::context::{escape_typst, resolve_variable_to_typst};
-use crate::converter::nodes::table::formula;
 use crate::domain::{TableCellContent, TableStyle};
 use serde_json::Value;
 
@@ -50,21 +49,31 @@ pub fn render_loop_cell(
     cell: &TableCellContent,
     style: &Option<TableStyle>,
     col_idx: usize,
-    ctx: &TranspileContext,
+    _ctx: &crate::converter::calculations::TranspileContext,
+    current_row: &Value,
+    all_rows: &[Value],
+    row_index: usize, // NEW: Pass the row index from Rust
 ) -> String {
     match cell {
         TableCellContent::Variable { key, bold, .. } => {
+            // Resolve entirely in Rust since we are generating static rows
             let value = if key == "__index" {
-                "#{__idx + 1}".to_string()
+                (row_index + 1).to_string()
             } else if key == "__index_0" {
-                "#{__idx}".to_string()
+                row_index.to_string()
             } else {
-                format!(
-                    "#{{ safe-get(item, \"{}\") }}",
-                    key.replace('\\', "\\\\").replace('"', "\\\"")
-                )
+                // Try to get as string/number, fallback to MISSING
+                current_row
+                    .get(key)
+                    .map(|v| match v {
+                        Value::String(s) => s.clone(),
+                        Value::Number(n) => n.to_string(),
+                        Value::Bool(b) => b.to_string(),
+                        _ => v.to_string(),
+                    })
+                    .unwrap_or_else(|| format!("[MISSING: {}]", key))
             };
-            let wrapped = wrap_cell_align(&value, style, col_idx);
+            let wrapped = wrap_cell_align(&escape_typst(&value), style, col_idx);
             if bold.unwrap_or(false) {
                 format!("*{}*", wrapped)
             } else {
@@ -79,17 +88,36 @@ pub fn render_loop_cell(
                 wrapped
             }
         }
-        TableCellContent::Formula { formula, bold, .. } => {
-            if formula.starts_with('=') {
-                let typst_code = formula::translate_to_typst(formula, ctx);
-                let wrapped = wrap_cell_align(&typst_code, style, col_idx);
-                return if bold.unwrap_or(false) {
-                    format!("*{}*", wrapped)
+        TableCellContent::Formula {
+            formula,
+            format: fmt,
+            locale,
+            decimal_places,
+            bold,
+            ..
+        } => {
+            // Evaluate in Rust
+            let raw_result = evaluate_formula(formula, Some(current_row), all_rows, "");
+
+            let loc = locale.as_deref().unwrap_or("en-US");
+            let dec = *decimal_places;
+
+            let formatted = if let Some(f) = fmt {
+                if let Ok(num) = raw_result.parse::<f64>() {
+                    let formatted_num = format_number(num, loc, dec);
+                    f.replace("{value}", &formatted_num)
                 } else {
-                    wrapped
-                };
-            }
-            let wrapped = wrap_cell_align(&escape_typst(formula), style, col_idx);
+                    f.replace("{value}", &raw_result)
+                }
+            } else {
+                if let Ok(num) = raw_result.parse::<f64>() {
+                    format_number(num, loc, dec)
+                } else {
+                    raw_result
+                }
+            };
+
+            let wrapped = wrap_cell_align(&escape_typst(&formatted), style, col_idx);
             if bold.unwrap_or(false) {
                 format!("*{}*", wrapped)
             } else {
@@ -99,13 +127,12 @@ pub fn render_loop_cell(
     }
 }
 
-/// Renders a cell in the footer (evaluates aggregations in Rust).
 pub fn render_footer_cell(
     cell: &TableCellContent,
     style: &Option<TableStyle>,
     col_idx: usize,
     all_rows: &[Value],
-    ctx: &TranspileContext,
+    _ctx: &crate::converter::calculations::TranspileContext,
 ) -> String {
     match cell {
         TableCellContent::Variable { key, bold, .. } => {
@@ -127,16 +154,31 @@ pub fn render_footer_cell(
         TableCellContent::Formula {
             formula,
             format: fmt,
+            locale,
+            decimal_places,
             bold,
             ..
         } => {
-            // For footers, we can use the Rust evaluator since we have all_rows
-            let raw_result = evaluate_formula(formula, None, all_rows, &ctx.loop_path);
+            let raw_result = evaluate_formula(formula, None, all_rows, "");
+
+            let loc = locale.as_deref().unwrap_or("en-US");
+            let dec = *decimal_places;
+
             let formatted = if let Some(f) = fmt {
-                f.replace("{value}", &raw_result)
+                if let Ok(num) = raw_result.parse::<f64>() {
+                    let formatted_num = format_number(num, loc, dec);
+                    f.replace("{value}", &formatted_num)
+                } else {
+                    f.replace("{value}", &raw_result)
+                }
             } else {
-                raw_result
+                if let Ok(num) = raw_result.parse::<f64>() {
+                    format_number(num, loc, dec)
+                } else {
+                    raw_result
+                }
             };
+
             let wrapped = wrap_cell_align(&escape_typst(&formatted), style, col_idx);
             if bold.unwrap_or(false) {
                 format!("*{}*", wrapped)
@@ -148,7 +190,6 @@ pub fn render_footer_cell(
 }
 
 /// Wraps a rendered cell value in `table.cell(...)` if it needs a colspan, rowspan, or fill override.
-/// FIX: Now correctly extracts colspan/rowspan from ALL variants, including Formula.
 pub fn wrap_cell_span(cell: &TableCellContent, value: &str, fill: Option<&str>) -> String {
     let (colspan, rowspan) = match cell {
         TableCellContent::Variable {
@@ -159,7 +200,7 @@ pub fn wrap_cell_span(cell: &TableCellContent, value: &str, fill: Option<&str>) 
         } => (*colspan, *rowspan),
         TableCellContent::Formula {
             colspan, rowspan, ..
-        } => (*colspan, *rowspan), // FIXED
+        } => (*colspan, *rowspan),
     };
     let colspan = colspan.filter(|c| *c > 1);
     let rowspan = rowspan.filter(|r| *r > 1);
@@ -181,7 +222,7 @@ pub fn wrap_cell_span(cell: &TableCellContent, value: &str, fill: Option<&str>) 
     format!("table.cell({})[{}]", args.join(", "), value)
 }
 
-pub fn wrap_cell_align(content: &str, style: &Option<TableStyle>, idx: usize) -> String {
+fn wrap_cell_align(content: &str, style: &Option<TableStyle>, idx: usize) -> String {
     let align = style
         .as_ref()
         .and_then(|s| s.column_align.as_ref())

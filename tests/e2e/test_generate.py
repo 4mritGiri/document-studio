@@ -276,7 +276,7 @@ def test_mlms_invoice(api_client, save_file, output_format):
                         "value": "4,50,000",
                     },
                 ],
-                "total_valuation": "11,00,000",
+                # "total_valuation": "=sum(value)",
             },
         },
         "page": {
@@ -627,13 +627,17 @@ def test_mlms_invoice(api_client, save_file, output_format):
                 ],
                 # FOOTER (TOTALS)
                 "footer": [
-                    {"text": ""},
-                    {"text": ""},
+                    {"text": "", "colspan": 2, "rowspan": 2, "border": None},
                     {
-                        "text": "Total Valuation:",
+                        "text": "Total Valuation",
                         "bold": True,
                     },  # Note: requires bold support in VariableCell or we just use text
-                    {"key": "total_valuation", "bold": True},
+                    {"formula": "=sum(value)", "locale": "en-Np", "bold": True},
+                    {
+                        "text": "Total",
+                        "bold": True,
+                    },  # Note: requires bold support in VariableCell or we just use text
+                    {"formula": "=sum(value)", "locale": "en-Np", "bold": True},
                 ],
                 "style": {
                     "columns": ["1fr", "3fr", "3fr", "2fr"],  # Proportional widths

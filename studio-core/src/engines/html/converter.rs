@@ -678,11 +678,13 @@ fn render_table_cell(
         TableCellContent::Formula {
             formula,
             format: fmt,
+            locale,
+            decimal_places,
             bold,
             colspan,
             rowspan,
         } => {
-            // FIX: Pass loop_path to evaluate_formula
+            // Evaluate in Rust
             let raw_result = crate::converter::calculations::evaluate_formula(
                 formula,
                 Some(local),
@@ -690,11 +692,26 @@ fn render_table_cell(
                 loop_path,
             );
 
+            let loc = locale.as_deref().unwrap_or("en-US");
+            let dec = *decimal_places;
+
+            // Apply dynamic locale formatting
             let formatted = if let Some(f) = fmt {
-                f.replace("{value}", &raw_result)
+                if let Ok(num) = raw_result.parse::<f64>() {
+                    let formatted_num =
+                        crate::converter::calculations::format_number(num, loc, dec);
+                    f.replace("{value}", &formatted_num)
+                } else {
+                    f.replace("{value}", &raw_result)
+                }
             } else {
-                raw_result
+                if let Ok(num) = raw_result.parse::<f64>() {
+                    crate::converter::calculations::format_number(num, loc, dec)
+                } else {
+                    raw_result
+                }
             };
+
             (
                 html_escape(&formatted),
                 bold.unwrap_or(false),
