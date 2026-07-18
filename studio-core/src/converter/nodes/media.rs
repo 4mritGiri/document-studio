@@ -40,13 +40,42 @@ pub fn render_image(
 
 pub fn render_shape(
     kind: &str,
+    path_data: &Option<String>,
     width: &str,
     height: &str,
     fill: &Option<String>,
+    stroke: &Option<String>,
+    stroke_width: &Option<String>,
     rotate: &Option<String>,
-) -> String {
+    assets: &mut HashMap<String, Bytes>, // NEW: Pass assets for SVG injection
+) -> Result<String, String> {
+    // Changed return type to Result
+
+    // If it's a custom path or has a stroke, we MUST render it as an SVG asset
+    if kind.to_lowercase() == "path" || stroke.is_some() {
+        let svg_bytes = crate::engines::graphics::shape::render_shape_svg(
+            kind,
+            path_data,
+            width,
+            height,
+            fill,
+            stroke,
+            stroke_width,
+            rotate,
+        )?;
+        let asset_path = format!("__shape_{}.svg", assets.len());
+        assets.insert(asset_path.clone(), Bytes::new(svg_bytes));
+
+        let img_expr = format!(
+            "image(\"{}\", width: {}, height: {})",
+            asset_path, width, height
+        );
+        return Ok(format!("#{}\n\n", img_expr));
+    }
+
+    // Fallback to native Typst shapes for basic rect/circle/triangle without strokes
     let fill_expr = color_expr(fill.as_deref().unwrap_or("black"));
-    let shape = match kind {
+    let shape = match kind.to_lowercase().as_str() {
         "triangle" => {
             format!("polygon(fill: {fill_expr}, (0pt, 0pt), ({width}, 0pt), (0pt, {height}))")
         }
@@ -55,8 +84,9 @@ pub fn render_shape(
         }
         _ => format!("rect(width: {width}, height: {height}, fill: {fill_expr}, stroke: none)"),
     };
+
     match rotate {
-        Some(r) => format!("#rotate({})[#{}]\n\n", r, shape),
-        None => format!("#{}\n\n", shape),
+        Some(r) => Ok(format!("#rotate({})[#{}]\n\n", r, shape)),
+        None => Ok(format!("#{}\n\n", shape)),
     }
 }

@@ -18,9 +18,10 @@ sha2 = "0.10"
 # PDF Generation
 typst = "0.15.0"
 typst-pdf = "0.15.0"
-#qrcode = "0.14"
 qrcode = { version = "0.14.1", default-features = false, features = ["svg"] }
 lopdf = "0.44"
+
+# plotters = "0.3.7"
 
 # Utilities
 uuid = { version = "1", features = ["v4"] }

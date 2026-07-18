@@ -206,11 +206,35 @@ pub fn render_node(
         } => media::render_image(src, width, height, alignment, assets),
         Node::Shape {
             kind,
+            path_data,
             width,
             height,
             fill,
+            stroke,
+            stroke_width,
             rotate,
-        } => Ok(media::render_shape(kind, width, height, fill, rotate)),
+        } => media::render_shape(
+            kind,
+            path_data,
+            width,
+            height,
+            fill,
+            stroke,
+            stroke_width,
+            rotate,
+            assets,
+        ),
+
+        Node::Chart {
+            chart_type,
+            title,
+            data,
+            width,
+            height,
+            colors,
+        } => crate::converter::nodes::chart::render_chart(
+            chart_type, title, data, width, height, colors, &None, assets,
+        ),
         Node::Placed {
             anchor,
             dx,

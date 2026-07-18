@@ -59,14 +59,17 @@ pub enum Node {
         content: Vec<InlineContent>,
         alignment: Option<String>,
     },
+
     #[serde(rename = "heading")]
     Heading {
         level: u8,
         content: Vec<InlineContent>,
         alignment: Option<String>,
     },
+
     #[serde(rename = "bullet_list")]
     BulletList { items: Vec<Vec<InlineContent>> },
+
     #[serde(rename = "table")]
     Table {
         headers: Option<Vec<String>>,
@@ -76,10 +79,13 @@ pub enum Node {
         footer: Option<Vec<TableCellContent>>,
         style: Option<TableStyle>,
     },
+
     #[serde(rename = "page_break")]
     PageBreak,
+
     #[serde(rename = "spacer")]
     Spacer { height: String },
+
     #[serde(rename = "image")]
     Image {
         src: String,
@@ -87,14 +93,29 @@ pub enum Node {
         height: Option<String>,
         alignment: Option<String>,
     },
+
     #[serde(rename = "shape")]
     Shape {
-        kind: String,
+        kind: String,              // "rect", "circle", "triangle", "path"
+        path_data: Option<String>, // NEW: SVG path data (e.g., "M10 10 H 90 V 90 Z")
         width: String,
         height: String,
         fill: Option<String>,
+        stroke: Option<String>,       // NEW
+        stroke_width: Option<String>, // NEW
         rotate: Option<String>,
     },
+
+    #[serde(rename = "chart")]
+    Chart {
+        chart_type: String, // "bar", "pie", "line"
+        title: Option<String>,
+        data: Vec<ChartDataPoint>,
+        width: Option<String>,
+        height: Option<String>,
+        colors: Option<Vec<String>>,
+    },
+
     #[serde(rename = "placed")]
     Placed {
         anchor: Option<String>,
@@ -102,6 +123,7 @@ pub enum Node {
         dy: Option<String>,
         content: Box<Node>,
     },
+
     #[serde(rename = "columns")]
     Columns {
         items: Vec<Vec<Node>>,
@@ -133,6 +155,12 @@ pub enum Node {
         error_correction: Option<String>, // "low" | "medium" | "quartile" | "high"
         alignment: Option<String>,
     },
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ChartDataPoint {
+    pub label: String,
+    pub value: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

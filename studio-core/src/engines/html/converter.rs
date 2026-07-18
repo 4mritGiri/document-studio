@@ -258,6 +258,7 @@ fn render_node(node: &Node, local: &Value, global: &Value) -> Result<String, Str
             align_style(alignment),
             render_inline(content, local, global)
         )),
+
         Node::Heading {
             level,
             content,
@@ -270,6 +271,7 @@ fn render_node(node: &Node, local: &Value, global: &Value) -> Result<String, Str
                 render_inline(content, local, global)
             ))
         }
+
         Node::BulletList { items } => {
             let mut html = String::from("<ul>\n");
             for item in items {
@@ -281,6 +283,7 @@ fn render_node(node: &Node, local: &Value, global: &Value) -> Result<String, Str
             html.push_str("</ul>\n");
             Ok(html)
         }
+
         Node::Table {
             headers,
             rows,
@@ -298,30 +301,59 @@ fn render_node(node: &Node, local: &Value, global: &Value) -> Result<String, Str
             local,
             global,
         )),
+
         Node::PageBreak => Ok("<div style=\"page-break-after: always;\"></div>\n".to_string()),
+
         Node::Spacer { height } => {
             let h = safe_css_token(height, "1em");
             Ok(format!("<div style=\"height:{}\"></div>\n", h))
         }
+
         Node::Image {
             src,
             width,
             height,
             alignment,
         } => Ok(render_image(src, width, height, alignment)),
+
         Node::Shape {
             kind,
+            path_data,
             width,
             height,
             fill,
+            stroke,
+            stroke_width,
             rotate,
-        } => Ok(render_shape(kind, width, height, fill, rotate)),
+        } => Ok(render_shape_html(
+            kind,
+            path_data,
+            width,
+            height,
+            fill,
+            stroke,
+            stroke_width,
+            rotate,
+        )),
+
+        Node::Chart {
+            chart_type,
+            title,
+            data,
+            width,
+            height,
+            colors,
+        } => Ok(render_chart_html(
+            chart_type, title, data, width, height, colors,
+        )),
+
         Node::Placed {
             anchor,
             dx,
             dy,
             content,
         } => render_placed(anchor, dx, dy, content, local, global),
+
         Node::Columns {
             items,
             column_widths,
@@ -782,34 +814,6 @@ fn render_image(
     )
 }
 
-fn render_shape(
-    kind: &str,
-    width: &str,
-    height: &str,
-    fill: &Option<String>,
-    rotate: &Option<String>,
-) -> String {
-    let w = safe_css_token(width, "1cm");
-    let h = safe_css_token(height, "1cm");
-    let color = safe_css_color(fill.as_deref().unwrap_or("black"), "black");
-    let rotate_css = rotate
-        .as_ref()
-        .map(|r| format!("transform: rotate({});", safe_css_token(r, "0deg")))
-        .unwrap_or_default();
-
-    match kind {
-        "circle" => format!(
-            "<div style=\"width:{w}; height:{h}; background:{color}; border-radius:50%; {rotate_css}\"></div>\n"
-        ),
-        "triangle" => format!(
-            "<div style=\"width:0; height:0; border-left:{w} solid transparent; border-bottom:{h} solid {color}; {rotate_css}\"></div>\n"
-        ),
-        _ => format!(
-            "<div style=\"width:{w}; height:{h}; background:{color}; {rotate_css}\"></div>\n"
-        ),
-    }
-}
-
 fn render_placed(
     anchor: &Option<String>,
     dx: &Option<String>,
@@ -876,4 +880,62 @@ fn render_columns(
     }
     html.push_str("</div>\n");
     Ok(html)
+}
+
+fn render_shape_html(
+    kind: &str,
+    path_data: &Option<String>,
+    width: &str,
+    height: &str,
+    fill: &Option<String>,
+    stroke: &Option<String>,
+    stroke_width: &Option<String>,
+    rotate: &Option<String>,
+) -> String {
+    let svg_bytes = crate::engines::graphics::shape::render_shape_svg(
+        kind,
+        path_data,
+        width,
+        height,
+        fill,
+        stroke,
+        stroke_width,
+        rotate, // <-- ADD THIS ARGUMENT
+    )
+    .unwrap_or_else(|e| format!("<svg><text>Error: {}</text></svg>", e).into_bytes());
+
+    let svg_str = String::from_utf8_lossy(&svg_bytes);
+
+    // FIX: Use .as_ref().map() and r.as_str() to match &str expectation
+    let rotate_css = rotate
+        .as_ref()
+        .map(|r| format!("transform: rotate({});", safe_css_token(r.as_str(), "0deg")))
+        .unwrap_or_default();
+
+    format!(
+        "<div style=\"display:inline-block; {}\">{}</div>\n",
+        rotate_css, svg_str
+    )
+}
+
+fn render_chart_html(
+    chart_type: &str,
+    title: &Option<String>,
+    data: &[crate::domain::ChartDataPoint],
+    width: &Option<String>,
+    _height: &Option<String>,
+    colors: &Option<Vec<String>>,
+) -> String {
+    let title_str = title.as_deref().unwrap_or("Chart");
+    let svg_bytes =
+        crate::engines::graphics::chart::render_chart_svg(chart_type, title_str, data, colors)
+            .unwrap_or_default();
+
+    let svg_str = String::from_utf8_lossy(&svg_bytes);
+    let w = safe_css_token(width.as_deref().unwrap_or("100%"), "100%");
+
+    format!(
+        "<div style=\"width:{}; max-width:600px;\">{}</div>\n",
+        w, svg_str
+    )
 }

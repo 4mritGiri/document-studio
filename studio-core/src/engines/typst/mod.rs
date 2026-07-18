@@ -67,6 +67,51 @@ impl DocumentEngine for TypstEngine {
         for (asset_path, svg_bytes) in qr::resolve_all(&qr_requests, &request.data)? {
             assets.insert(asset_path, svg_bytes);
         }
+        for node in &request.content {
+            match node {
+                crate::domain::Node::Chart {
+                    chart_type,
+                    title,
+                    data,
+                    width: _,
+                    height: _,
+                    colors,
+                } => {
+                    let title_str = title.as_deref().unwrap_or("Chart");
+                    let svg_bytes = crate::engines::graphics::chart::render_chart_svg(
+                        chart_type, title_str, data, colors,
+                    )?;
+                    let asset_path = format!("__chart_{}.svg", assets.len());
+                    assets.insert(asset_path, Bytes::new(svg_bytes));
+                }
+                crate::domain::Node::Shape {
+                    kind,
+                    path_data,
+                    width,
+                    height,
+                    fill,
+                    stroke,
+                    stroke_width,
+                    rotate,
+                } => {
+                    if kind.to_lowercase() == "path" {
+                        let svg_bytes = crate::engines::graphics::shape::render_shape_svg(
+                            kind,
+                            path_data,
+                            width,
+                            height,
+                            fill,
+                            stroke,
+                            stroke_width,
+                            rotate,
+                        )?;
+                        let asset_path = format!("__shape_{}.svg", assets.len());
+                        assets.insert(asset_path, Bytes::new(svg_bytes));
+                    }
+                }
+                _ => {}
+            }
+        }
 
         let data_json = serde_json::to_string(&request.data).map_err(|e| e.to_string())?;
         assets.insert("data.json".to_string(), Bytes::new(data_json.into_bytes()));

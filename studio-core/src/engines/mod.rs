@@ -1,5 +1,6 @@
 // src/engines/mod.rs
 
+pub mod graphics;
 pub mod html;
 pub mod typst;
 // pub mod docx; // Future
