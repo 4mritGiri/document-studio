@@ -19,6 +19,12 @@ pub fn format_table(
 ) -> Result<String, String> {
     let mut table_code = "#table(\n".to_string();
 
+    // Create context for formula transpilation
+    let transpile_ctx = crate::converter::calculations::TranspileContext {
+        is_loop: loop_data.is_some(),
+        loop_path: loop_data.clone().unwrap_or_default(),
+    };
+
     // 1. Determine column count safely
     let col_count = headers
         .as_ref()
@@ -146,7 +152,7 @@ pub fn format_table(
             escaped_path
         ));
         for (idx, c) in template.iter().enumerate() {
-            let val = cell::render_loop_cell(c, style, idx);
+            let val = cell::render_loop_cell(c, style, idx, &transpile_ctx);
             table_code.push_str(&format!(
                 "          {},\n",
                 cell::wrap_cell_span(c, &val, None)
@@ -158,7 +164,7 @@ pub fn format_table(
     // 9. Footer rows
     if let Some(ftr) = footer {
         for (idx, c) in ftr.iter().enumerate() {
-            let val = cell::render_footer_cell(c, style, idx, &all_rows);
+            let val = cell::render_footer_cell(c, style, idx, &all_rows, &transpile_ctx);
             let fill_override = if striped.is_some() {
                 Some("white")
             } else {

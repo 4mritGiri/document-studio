@@ -522,6 +522,7 @@ fn render_table(
         .map(|c| safe_css_color(c, "#f3f4f6"));
 
     let striped = style.as_ref().and_then(|s| s.striped_rows.as_ref());
+    let loop_path = loop_data.as_deref().unwrap_or(""); // NEW: Define loop_path
 
     let mut html = format!(
         "<table style=\"width:{}; border-collapse: collapse;\">\n",
@@ -564,6 +565,7 @@ fn render_table(
                     global,
                     None,
                     None,
+                    loop_path,
                 ));
             }
             html.push_str("    </tr>\n");
@@ -596,6 +598,7 @@ fn render_table(
                         global,
                         Some(row_idx),
                         stripe_fill,
+                        loop_path,
                     ));
                 }
                 html.push_str("    </tr>\n");
@@ -625,6 +628,7 @@ fn render_table(
                 global,
                 None,
                 footer_fill,
+                loop_path,
             ));
         }
         html.push_str("    </tr>\n  </tfoot>\n");
@@ -645,6 +649,7 @@ fn render_table_cell(
     global: &Value,
     index: Option<usize>,
     fill_override: Option<&str>,
+    loop_path: &str,
 ) -> String {
     let align = cell_align(style, idx);
 
@@ -677,9 +682,13 @@ fn render_table_cell(
             colspan,
             rowspan,
         } => {
-            // For HTML, we evaluate everything in Rust
-            let raw_result =
-                crate::converter::calculations::evaluate_formula(formula, Some(local), &[]);
+            // FIX: Pass loop_path to evaluate_formula
+            let raw_result = crate::converter::calculations::evaluate_formula(
+                formula,
+                Some(local),
+                &[],
+                loop_path,
+            );
 
             let formatted = if let Some(f) = fmt {
                 f.replace("{value}", &raw_result)

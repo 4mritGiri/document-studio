@@ -20,7 +20,15 @@ def test_advanced_invoice_math(api_client, save_file):
             {"type": "heading", "level": 1, "content": [{"text": "TAX INVOICE"}]},
             {
                 "type": "table",
-                "headers": ["Description", "Qty", "Price", "Total", "VAT (13%)"],
+                # FIX 1: Ensure headers match the number of columns (6 total)
+                "headers": [
+                    "Description",
+                    "Qty",
+                    "Price",
+                    "Total",
+                    "VAT (13%)",
+                    "Net Total",
+                ],
                 "loop_data": "items",
                 "row_template": [
                     {"key": "desc"},
@@ -28,30 +36,44 @@ def test_advanced_invoice_math(api_client, save_file):
                     {"key": "price"},
                     # INLINE MATH: =qty * price
                     {"formula": "=qty * price", "bold": True},
-                    # PERCENTAGE MATH: =total * 0.13 (Wait, we can't reference the previous cell easily,
-                    # so we do =qty * price * 0.13)
+                    # PERCENTAGE MATH: =qty * price * 0.13
                     {"formula": "=qty * price * 0.13", "format": "NPR {value}"},
+                    # COMPLEX MATH: Parentheses and multiple operators
+                    {
+                        "formula": "=(qty * price) - (qty * price * 0.13)",
+                        "format": "{value}",
+                    },
                 ],
                 "footer": [
-                    {"text": "FINANCIAL SUMMARY", "bold": True, "colspan": 3},
-                    # AGGREGATION: =sum(total) -> Wait, we need to sum the calculated total.
-                    # Since we can't easily sum a calculated column in V1, let's sum the base total:
+                    # FIX 2: colspan=4 spans the first 4 columns (Desc, Qty, Price, Total)
+                    {"text": "FINANCIAL SUMMARY", "bold": True, "colspan": 4},
+                    # This occupies column 5
                     {
-                        "formula": "=sum(price)",
+                        "formula": "=sum(price) * 0.13",
                         "format": "{value}",
                         "bold": True,
                     },
+                    # This occupies column 6 (4 + 1 + 1 = 6 total columns)
                     {
-                        "formula": "=sum(price) * 0.13",
+                        "formula": "=sum(price) * 1.13",
                         "format": "{value}",
                         "bold": True,
                     },
                 ],
                 "style": {
                     "width": "100%",
-                    "columns": ["3fr", "1fr", "1.5fr", "1.5fr", "1.5fr"],
-                    "column_align": ["left", "right", "right", "right", "right"],
-                    "header_bg": "#ffffff",
+                    # Provide exactly 6 column definitions to match the headers
+                    "columns": ["3fr", "1fr", "1.5fr", "1.5fr", "1.5fr", "1.5fr"],
+                    # FIX 4: Provide exactly 6 alignments
+                    "column_align": [
+                        "left",
+                        "right",
+                        "right",
+                        "right",
+                        "right",
+                        "right",
+                    ],
+                    "header_bg": "#1f2937",
                 },
             },
         ],

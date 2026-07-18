@@ -24,6 +24,9 @@ pub fn json_to_typst(
         r#"
 #let item = (:) // Empty dictionary for non-loop contexts
 
+// NEW: Helper function to safely convert none to 0 for math operations
+#let num(val) = if val == none { 0 } else { val }
+
 #let safe-get(obj, path) = {
   let parts = path.split(".")
   let current = obj

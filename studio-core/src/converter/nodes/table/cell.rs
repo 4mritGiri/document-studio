@@ -1,5 +1,6 @@
 // src/converter/nodes/table/cell.rs
 
+use crate::converter::calculations::{evaluate_formula, TranspileContext};
 use crate::converter::context::{escape_typst, resolve_variable_to_typst};
 use crate::converter::nodes::table::formula;
 use crate::domain::{TableCellContent, TableStyle};
@@ -49,6 +50,7 @@ pub fn render_loop_cell(
     cell: &TableCellContent,
     style: &Option<TableStyle>,
     col_idx: usize,
+    ctx: &TranspileContext,
 ) -> String {
     match cell {
         TableCellContent::Variable { key, bold, .. } => {
@@ -79,13 +81,8 @@ pub fn render_loop_cell(
         }
         TableCellContent::Formula { formula, bold, .. } => {
             if formula.starts_with('=') {
-                let expr = formula[1..].trim();
-                if formula::is_aggregation(expr) {
-                    return wrap_cell_align(&escape_typst(formula), style, col_idx);
-                }
-                let typst_expr = formula::translate_to_typst(expr);
-                let value = format!("#{{ {} }}", typst_expr);
-                let wrapped = wrap_cell_align(&value, style, col_idx);
+                let typst_code = formula::translate_to_typst(formula, ctx);
+                let wrapped = wrap_cell_align(&typst_code, style, col_idx);
                 return if bold.unwrap_or(false) {
                     format!("*{}*", wrapped)
                 } else {
@@ -108,6 +105,7 @@ pub fn render_footer_cell(
     style: &Option<TableStyle>,
     col_idx: usize,
     all_rows: &[Value],
+    ctx: &TranspileContext,
 ) -> String {
     match cell {
         TableCellContent::Variable { key, bold, .. } => {
@@ -132,8 +130,8 @@ pub fn render_footer_cell(
             bold,
             ..
         } => {
-            let raw_result =
-                crate::converter::calculations::evaluate_formula(formula, None, all_rows);
+            // For footers, we can use the Rust evaluator since we have all_rows
+            let raw_result = evaluate_formula(formula, None, all_rows, &ctx.loop_path);
             let formatted = if let Some(f) = fmt {
                 f.replace("{value}", &raw_result)
             } else {
