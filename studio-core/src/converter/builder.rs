@@ -5,6 +5,7 @@ use crate::converter::context::{
     build_header_footer_block, color_expr_with_alpha, escape_typst, safe_typst_token,
 };
 use crate::converter::nodes::qr::{self, QrRequest};
+use crate::converter::nodes::table::TableRequest;
 use crate::converter::nodes::{layout, media, table, text};
 use crate::domain::{Node, PageSettings};
 use serde_json::Value;
@@ -15,10 +16,19 @@ pub fn json_to_typst(
     content: &[Node],
     _data: &Value,
     page: &Option<PageSettings>,
-) -> Result<(String, HashMap<String, Bytes>, Vec<QrRequest>), String> {
+) -> Result<
+    (
+        String,
+        HashMap<String, Bytes>,
+        Vec<QrRequest>,
+        Vec<TableRequest>,
+    ),
+    String,
+> {
     let mut typst_code = String::new();
     let mut assets = HashMap::new();
     let mut qr_requests = Vec::new();
+    let mut table_requests = Vec::new();
 
     typst_code.push_str(
         r#"
@@ -68,13 +78,21 @@ pub fn json_to_typst(
         _data,
         &mut assets,
         &mut qr_requests,
+        &mut table_requests,
     )?);
 
     for node in content {
-        typst_code.push_str(&render_node(node, _data, &mut assets, &mut qr_requests, 0)?);
+        typst_code.push_str(&render_node(
+            node,
+            _data,
+            &mut assets,
+            &mut qr_requests,
+            &mut table_requests,
+            0,
+        )?);
     }
 
-    Ok((typst_code, assets, qr_requests))
+    Ok((typst_code, assets, qr_requests, table_requests))
 }
 
 fn build_page_preamble(
@@ -82,6 +100,7 @@ fn build_page_preamble(
     data: &Value,
     assets: &mut HashMap<String, Bytes>,
     qr_requests: &mut Vec<QrRequest>,
+    table_requests: &mut Vec<TableRequest>,
 ) -> Result<String, String> {
     let header = page.as_ref().and_then(|p| p.header.as_ref());
     let footer = page.as_ref().and_then(|p| p.footer.as_ref());
@@ -112,7 +131,14 @@ fn build_page_preamble(
 
     if let Some(bg) = background {
         for n in bg {
-            bg_content.push_str(&render_node(n, data, assets, qr_requests, 0)?);
+            bg_content.push_str(&render_node(
+                n,
+                data,
+                assets,
+                qr_requests,
+                table_requests,
+                0,
+            )?);
         }
     }
 
@@ -170,6 +196,7 @@ pub fn render_node(
     data: &Value,
     assets: &mut HashMap<String, Bytes>,
     qr_requests: &mut Vec<QrRequest>,
+    table_requests: &mut Vec<TableRequest>,
     depth: usize,
 ) -> Result<String, String> {
     if depth > MAX_NODE_DEPTH {
@@ -194,7 +221,15 @@ pub fn render_node(
             style,
         } => Ok(format!(
             "{}\n\n",
-            table::format_table(headers, rows, loop_data, row_template, footer, data, style)?
+            table::format_table(
+                headers,
+                rows,
+                loop_data,
+                row_template,
+                footer,
+                style,
+                table_requests,
+            )?
         )),
         Node::PageBreak => Ok("#pagebreak()\n\n".to_string()),
         Node::Spacer { height } => Ok(format!("#v({})\n\n", safe_typst_token(height, "1em"))),
@@ -248,6 +283,7 @@ pub fn render_node(
             data,
             assets,
             qr_requests,
+            table_requests,
             depth + 1,
         ),
         Node::Columns {
@@ -261,6 +297,7 @@ pub fn render_node(
             data,
             assets,
             qr_requests,
+            table_requests,
             depth + 1,
         ),
         Node::Qr {

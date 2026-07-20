@@ -1,7 +1,7 @@
 // src/converter/nodes/table/cell.rs
 
 use crate::converter::calculations::{evaluate_formula, format_number};
-use crate::converter::context::{escape_typst, resolve_variable_to_typst};
+use crate::converter::context::{color_expr, escape_typst, resolve_variable_to_typst};
 use crate::domain::{TableCellContent, TableStyle};
 use serde_json::Value;
 
@@ -52,17 +52,15 @@ pub fn render_loop_cell(
     _ctx: &crate::converter::calculations::TranspileContext,
     current_row: &Value,
     all_rows: &[Value],
-    row_index: usize, // NEW: Pass the row index from Rust
+    row_index: usize,
 ) -> String {
     match cell {
         TableCellContent::Variable { key, bold, .. } => {
-            // Resolve entirely in Rust since we are generating static rows
             let value = if key == "__index" {
                 (row_index + 1).to_string()
             } else if key == "__index_0" {
                 row_index.to_string()
             } else {
-                // Try to get as string/number, fallback to MISSING
                 current_row
                     .get(key)
                     .map(|v| match v {
@@ -96,7 +94,6 @@ pub fn render_loop_cell(
             bold,
             ..
         } => {
-            // Evaluate in Rust
             let raw_result = evaluate_formula(formula, Some(current_row), all_rows, "");
 
             let loc = locale.as_deref().unwrap_or("en-US");
@@ -109,12 +106,10 @@ pub fn render_loop_cell(
                 } else {
                     f.replace("{value}", &raw_result)
                 }
+            } else if let Ok(num) = raw_result.parse::<f64>() {
+                format_number(num, loc, dec)
             } else {
-                if let Ok(num) = raw_result.parse::<f64>() {
-                    format_number(num, loc, dec)
-                } else {
-                    raw_result
-                }
+                raw_result
             };
 
             let wrapped = wrap_cell_align(&escape_typst(&formatted), style, col_idx);
@@ -171,12 +166,10 @@ pub fn render_footer_cell(
                 } else {
                     f.replace("{value}", &raw_result)
                 }
+            } else if let Ok(num) = raw_result.parse::<f64>() {
+                format_number(num, loc, dec)
             } else {
-                if let Ok(num) = raw_result.parse::<f64>() {
-                    format_number(num, loc, dec)
-                } else {
-                    raw_result
-                }
+                raw_result
             };
 
             let wrapped = wrap_cell_align(&escape_typst(&formatted), style, col_idx);
@@ -189,8 +182,31 @@ pub fn render_footer_cell(
     }
 }
 
-/// Wraps a rendered cell value in `table.cell(...)` if it needs a colspan, rowspan, or fill override.
-pub fn wrap_cell_span(cell: &TableCellContent, value: &str, fill: Option<&str>) -> String {
+/// Extracts and validates this cell's own background color, if any.
+/// Routed through `color_expr` — the same allowlist validator used for
+/// every other color field in the converter — since `fill` is
+/// client-controlled and must never be interpolated raw into generated
+/// Typst source.
+fn resolve_cell_fill(cell: &TableCellContent) -> Option<String> {
+    let fill = match cell {
+        TableCellContent::Variable { fill, .. } => fill,
+        TableCellContent::Text { fill, .. } => fill,
+        TableCellContent::Formula { fill, .. } => fill,
+    };
+    fill.as_deref().map(color_expr)
+}
+
+/// Wraps a rendered cell value in `table.cell(...)` if it needs a colspan,
+/// rowspan, or fill. All three combine into a single `table.cell()` call —
+/// never nested — matching the same fix applied earlier for the Typst
+/// engine's striping/colspan interaction.
+///
+/// `fill_override` is for automatic, engine-driven fills (e.g. forcing a
+/// footer row to a neutral background so `striped_rows` can't bleed into
+/// totals). A cell's own explicit `fill` field always takes priority over
+/// that automatic override — if the caller explicitly asked for a color,
+/// that's what they get.
+pub fn wrap_cell_span(cell: &TableCellContent, value: &str, fill_override: Option<&str>) -> String {
     let (colspan, rowspan) = match cell {
         TableCellContent::Variable {
             colspan, rowspan, ..
@@ -204,6 +220,7 @@ pub fn wrap_cell_span(cell: &TableCellContent, value: &str, fill: Option<&str>) 
     };
     let colspan = colspan.filter(|c| *c > 1);
     let rowspan = rowspan.filter(|r| *r > 1);
+    let fill = resolve_cell_fill(cell).or_else(|| fill_override.map(|s| s.to_string()));
 
     if colspan.is_none() && rowspan.is_none() && fill.is_none() {
         return format!("[{}]", value);

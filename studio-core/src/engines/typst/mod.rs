@@ -7,6 +7,7 @@ pub mod world;
 
 use crate::converter::builder::json_to_typst;
 use crate::converter::nodes::qr::{self, QrRequest};
+use crate::converter::nodes::table::{self, TableRequest};
 use crate::domain::DocumentRequest;
 use crate::engines::{DocumentEngine, RenderOutput};
 use moka::sync::Cache;
@@ -16,11 +17,17 @@ use std::sync::OnceLock;
 use typst::foundations::Bytes;
 
 // The cached value is purely structural: markup + static assets (logos,
-// letterhead shapes) + a list of QR *requests* (not resolved QR bytes).
-// QR requests get resolved against live request data on every call to
-// `render`, after the cache lookup — see the comment on `qr::QrRequest`
-// for why this split exists.
-type CachedLayout = (String, HashMap<String, Bytes>, Vec<QrRequest>);
+// letterhead shapes) + a list of QR *requests* + a list of Table
+// *requests* (never resolved values — see QrRequest's and TableRequest's
+// doc comments for why). Both QR payloads and table loop-rows/footer
+// aggregations are resolved against live request data on every call to
+// `render`, strictly after the cache lookup.
+type CachedLayout = (
+    String,
+    HashMap<String, Bytes>,
+    Vec<QrRequest>,
+    Vec<TableRequest>,
+);
 
 // Global LRU Cache for compiled layouts (holds up to 100 templates)
 static LAYOUT_CACHE: OnceLock<Cache<String, CachedLayout>> = OnceLock::new();
@@ -44,29 +51,41 @@ impl DocumentEngine for TypstEngine {
         hasher.update(layout_key.as_bytes());
         let layout_hash = format!("{:x}", hasher.finalize());
 
-        let (layout_markup, mut assets, qr_requests) = match get_cache().get(&layout_hash) {
-            Some(cached) => {
-                tracing::debug!("Cache HIT for layout {}", layout_hash);
-                cached
-            }
-            None => {
-                tracing::debug!("Cache MISS for layout {}", layout_hash);
-                let result = json_to_typst(&request.content, &request.data, &request.page)?;
-                get_cache().insert(layout_hash.clone(), result.clone());
-                result
-            }
-        };
+        let (layout_markup, mut assets, qr_requests, table_requests) =
+            match get_cache().get(&layout_hash) {
+                Some(cached) => {
+                    tracing::debug!("Cache HIT for layout {}", layout_hash);
+                    cached
+                }
+                None => {
+                    tracing::debug!("Cache MISS for layout {}", layout_hash);
+                    let result = json_to_typst(&request.content, &request.data, &request.page)?;
+                    get_cache().insert(layout_hash.clone(), result.clone());
+                    result
+                }
+            };
 
-        // Resolve every QR code against the REAL request data, every single
-        // request — this step is deliberately outside the cache. A QR
-        // code's pixel pattern is data, not layout; caching it here would
-        // mean every request after the first cache hit gets the first
-        // request's QR code (e.g. every subsequent invoice would embed the
-        // first invoice's payment QR — a wrong-amount/wrong-reference bug,
-        // not a cosmetic one).
+        // Resolve every QR code against the REAL request data, every
+        // single request — deliberately outside the cache. See
+        // qr::QrRequest's doc comment.
         for (asset_path, svg_bytes) in qr::resolve_all(&qr_requests, &request.data)? {
             assets.insert(asset_path, svg_bytes);
         }
+
+        // Resolve every deferred table fragment (loop-generated rows,
+        // footer aggregations) against the REAL request data, every
+        // single request — deliberately outside the cache. This is the
+        // fix for a real, reproduced bug: previously these were resolved
+        // while building the (cached) layout, so a cache hit on a shared
+        // template would silently replay the FIRST request's row values —
+        // e.g. one customer's invoice line items and totals appearing on
+        // a different customer's document. See table::TableRequest's doc
+        // comment for the full explanation.
+        let mut layout_markup = layout_markup;
+        for (token, rendered) in table::resolve_deferred(&table_requests, &request.data) {
+            layout_markup = layout_markup.replacen(&token, &rendered, 1);
+        }
+
         for node in &request.content {
             match node {
                 crate::domain::Node::Chart {
@@ -118,10 +137,10 @@ impl DocumentEngine for TypstEngine {
 
         let final_markup = format!("#let data = json(\"data.json\")\n{}", layout_markup);
 
-        // 5. Compile to PDF (pass the fully populated assets map)
+        // Compile to PDF (pass the fully populated assets map)
         let raw_pdf_bytes = compiler::render_pdf(&final_markup, assets)?;
 
-        // 6. Apply Security/Encryption if configured
+        // Apply Security/Encryption if configured
         let final_bytes = if let Some(sec_config) = &request.security {
             tracing::info!("Applying AES-256 PDF encryption...");
             security::apply_security(raw_pdf_bytes, sec_config)?

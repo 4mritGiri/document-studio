@@ -1,9 +1,9 @@
 def test_invoice_design_layout(api_client, save_file):
     """Renders a blank/printable invoice template matching the reference
-    design: diamond logo + brand header, orange accent rules, Invoice-to
-    and Invoice#/Date blocks, a dark-header item table with blank rows,
-    Payment Info + Sub Total/Tax/TOTAL block, terms, signature line, and a
-    footer contact bar.
+    design: solid diamond logo with an "S" monogram, brand header, orange
+    accent rules, Invoice-to and Invoice#/Date blocks, a dark-header item
+    table with blank rows, Payment Info + Sub Total/Tax/TOTAL block, terms,
+    signature line, and an icon-enhanced footer contact bar.
     """
     ORANGE = "#F0955E"
     DARK = "#2B2B2E"
@@ -32,14 +32,41 @@ def test_invoice_design_layout(api_client, save_file):
                             "gutter": "0.5em",
                             "items": [
                                 [
+                                    # Solid diamond (logo mark) with a
+                                    # centered white "S" overlaid on top —
+                                    # matches the reference's brand mark,
+                                    # not just an outline.
                                     {
                                         "type": "shape",
                                         "kind": "rect",
                                         "width": "0.9cm",
                                         "height": "0.9cm",
-                                        "fill": "none",
-                                        "stroke": ORANGE,
+                                        "fill": ORANGE,
                                         "rotate": "45deg",
+                                    },
+                                    {
+                                        "type": "placed",
+                                        "anchor": "center",
+                                        "content": {
+                                            "type": "columns",
+                                            "column_widths": ["0.9cm"],
+                                            "items": [
+                                                [
+                                                    {
+                                                        "type": "paragraph",
+                                                        "alignment": "center",
+                                                        "content": [
+                                                            {
+                                                                "text": "S",
+                                                                "bold": True,
+                                                                "color": "#ffffff",
+                                                                "size": "16pt",
+                                                            }
+                                                        ],
+                                                    }
+                                                ]
+                                            ],
+                                        },
                                     },
                                 ],
                                 [
@@ -184,9 +211,18 @@ def test_invoice_design_layout(api_client, save_file):
                         {
                             "type": "table",
                             "rows": [
-                                [{"text": "Sub Total", "bold": True}, {"text": ""}],
-                                [{"text": "Tax", "bold": True}, {"text": ""}],
-                                [{"text": "TOTAL", "bold": True}, {"text": ""}],
+                                [
+                                    {"text": "Sub Total", "bold": True, "fill": ORANGE},
+                                    {"text": ""},
+                                ],
+                                [
+                                    {"text": "Tax", "bold": True, "fill": ORANGE},
+                                    {"text": ""},
+                                ],
+                                [
+                                    {"text": "TOTAL", "bold": True, "fill": ORANGE},
+                                    {"text": ""},
+                                ],
                             ],
                             "style": {
                                 "columns": ["1fr", "1fr"],
@@ -253,17 +289,58 @@ def test_invoice_design_layout(api_client, save_file):
                 "fill": ORANGE,
             },
             {"type": "spacer", "height": "0.3cm"},
+            # Icons: "☎" and "✉" are real glyphs (verified present in a
+            # commonly-available fallback font); the pin and globe icons
+            # use plain geometric shapes instead of emoji, since color-emoji
+            # codepoints (📍🌐) are NOT covered by that font and would risk
+            # rendering as blank "tofu" boxes depending on what's installed
+            # on the server. This trades a little icon fidelity for a
+            # guarantee that nothing renders as a missing-glyph box.
             {
                 "type": "columns",
-                "column_widths": ["1fr", "auto", "1fr", "auto", "1fr", "auto", "1fr"],
+                "column_widths": [
+                    "1fr",
+                    "auto",
+                    "1fr",
+                    "auto",
+                    "1fr",
+                    "auto",
+                    "1fr",
+                ],
                 "gutter": "0.5em",
                 "items": [
                     [
                         {
                             "type": "paragraph",
                             "alignment": "center",
-                            "content": [{"text": "Phone", "size": "8pt"}],
+                            "content": [
+                                {"text": "☎ ", "size": "8pt", "color": GRAY},
+                                {"text": "Phone", "size": "8pt", "color": GRAY},
+                            ],
                         }
+                    ],
+                    [
+                        {
+                            "type": "paragraph",
+                            "alignment": "center",
+                            "content": [{"text": "|", "color": GRAY}],
+                        }
+                    ],
+                    [
+                        {
+                            "type": "shape",
+                            "kind": "circle",
+                            "width": "0.2cm",
+                            "height": "0.2cm",
+                            "fill": GRAY,
+                        },
+                        {
+                            "type": "paragraph",
+                            "alignment": "center",
+                            "content": [
+                                {"text": "Address", "size": "8pt", "color": GRAY}
+                            ],
+                        },
                     ],
                     [
                         {
@@ -276,7 +353,10 @@ def test_invoice_design_layout(api_client, save_file):
                         {
                             "type": "paragraph",
                             "alignment": "center",
-                            "content": [{"text": "Address", "size": "8pt"}],
+                            "content": [
+                                {"text": "✉ ", "size": "8pt", "color": GRAY},
+                                {"text": "Mail", "size": "8pt", "color": GRAY},
+                            ],
                         }
                     ],
                     [
@@ -288,24 +368,19 @@ def test_invoice_design_layout(api_client, save_file):
                     ],
                     [
                         {
-                            "type": "paragraph",
-                            "alignment": "center",
-                            "content": [{"text": "Mail", "size": "8pt"}],
-                        }
-                    ],
-                    [
+                            "type": "shape",
+                            "kind": "circle",
+                            "width": "0.22cm",
+                            "height": "0.22cm",
+                            "fill": GRAY,
+                        },
                         {
                             "type": "paragraph",
                             "alignment": "center",
-                            "content": [{"text": "|", "color": GRAY}],
-                        }
-                    ],
-                    [
-                        {
-                            "type": "paragraph",
-                            "alignment": "center",
-                            "content": [{"text": "Website", "size": "8pt"}],
-                        }
+                            "content": [
+                                {"text": "Website", "size": "8pt", "color": GRAY}
+                            ],
+                        },
                     ],
                 ],
             },

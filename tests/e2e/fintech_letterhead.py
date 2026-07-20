@@ -79,7 +79,7 @@ def test_mlms_invoice(api_client, save_file, output_format):
                 {
                     "type": "placed",
                     "anchor": "top-left",
-                    "dx": "2cm",
+                    "dx": "1.8cm",
                     "dy": "1cm",
                     "content": {
                         "type": "image",
@@ -95,7 +95,7 @@ def test_mlms_invoice(api_client, save_file, output_format):
                     "content": {
                         "type": "heading",
                         "level": 1,
-                        "content": [{"text": "FINTECH", "bold": True}],
+                        "content": [{"text": "FINTECH", "bold": True, "size": "20pt"}],
                     },
                 },
                 # Smaller accent triangle bottom-right

@@ -47,10 +47,8 @@ pub fn render_shape(
     stroke: &Option<String>,
     stroke_width: &Option<String>,
     rotate: &Option<String>,
-    assets: &mut HashMap<String, Bytes>, // NEW: Pass assets for SVG injection
+    assets: &mut HashMap<String, Bytes>,
 ) -> Result<String, String> {
-    // Changed return type to Result
-
     // If it's a custom path or has a stroke, we MUST render it as an SVG asset
     if kind.to_lowercase() == "path" || stroke.is_some() {
         let svg_bytes = crate::engines::graphics::shape::render_shape_svg(

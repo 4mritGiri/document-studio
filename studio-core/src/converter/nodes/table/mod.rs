@@ -8,22 +8,121 @@ use crate::converter::context::{color_expr, escape_typst, safe_typst_token};
 use crate::domain::{TableCellContent, TableStyle};
 use serde_json::Value;
 
+/// A table fragment whose content depends on live request data (rows
+/// generated from `loop_data`, and/or footer aggregations like SUM/AVG)
+/// that must NOT be resolved while building the cached layout.
+///
+/// `loop_data` is a path string into `request.data` (e.g. "items") — it is
+/// NOT part of the cache key (`hash(request.content, request.page)`), so
+/// two requests sharing the same template but different `data` would
+/// otherwise silently share resolved row values on a cache hit. This was
+/// a real, reproduced bug: a customer's invoice line items and computed
+/// totals could leak into a different customer's document whenever both
+/// used the same template structure.
+///
+/// This mirrors `qr::QrRequest` exactly, for exactly the same reason:
+/// `resolve_deferred` (called from `engines/typst/mod.rs`) must run once
+/// per request, AFTER the cache lookup, against the live `request.data` —
+/// never before, and its result must never be cached.
+#[derive(Debug, Clone)]
+pub enum TableRequest {
+    Rows {
+        token: String,
+        loop_data: String,
+        row_template: Vec<TableCellContent>,
+        style: Option<TableStyle>,
+    },
+    Footer {
+        token: String,
+        footer: Vec<TableCellContent>,
+        loop_data: Option<String>,
+        style: Option<TableStyle>,
+    },
+}
+
+/// Resolves every deferred table fragment against the REAL, live request
+/// data, returning (token, rendered_markup) pairs. The caller splices
+/// each pair into the cached layout string via a plain string replace.
+/// Call once per request, after retrieving (or generating) the cached
+/// layout — never cache the result of this function.
+pub fn resolve_deferred(requests: &[TableRequest], data: &Value) -> Vec<(String, String)> {
+    let mut out = Vec::with_capacity(requests.len());
+    for req in requests {
+        match req {
+            TableRequest::Rows {
+                token,
+                loop_data,
+                row_template,
+                style,
+            } => {
+                let all_rows = calculations::get_all_rows(data, loop_data).unwrap_or_default();
+                let ctx = calculations::TranspileContext {
+                    is_loop: true,
+                    loop_path: loop_data.clone(),
+                };
+                let mut rendered = String::new();
+                for (row_index, item) in all_rows.iter().enumerate() {
+                    for (idx, c) in row_template.iter().enumerate() {
+                        let val =
+                            cell::render_loop_cell(c, style, idx, &ctx, item, &all_rows, row_index);
+                        rendered.push_str(&format!(
+                            "          {},\n",
+                            cell::wrap_cell_span(c, &val, None)
+                        ));
+                    }
+                }
+                out.push((token.clone(), rendered));
+            }
+            TableRequest::Footer {
+                token,
+                footer,
+                loop_data,
+                style,
+            } => {
+                let all_rows = loop_data
+                    .as_ref()
+                    .and_then(|p| calculations::get_all_rows(data, p))
+                    .unwrap_or_default();
+                let ctx = calculations::TranspileContext {
+                    is_loop: false,
+                    loop_path: loop_data.clone().unwrap_or_default(),
+                };
+                let striped = style.as_ref().and_then(|s| s.striped_rows.as_ref());
+                let mut rendered = String::new();
+                for (idx, c) in footer.iter().enumerate() {
+                    let val = cell::render_footer_cell(c, style, idx, &all_rows, &ctx);
+                    let fill_override = if striped.is_some() {
+                        Some("white")
+                    } else {
+                        None
+                    };
+                    rendered.push_str(&format!(
+                        "  {},\n",
+                        cell::wrap_cell_span(c, &val, fill_override)
+                    ));
+                }
+                out.push((token.clone(), rendered));
+            }
+        }
+    }
+    out
+}
+
+/// Builds the static structure of a `#table(...)` call. Deliberately takes
+/// NO reference to `request.data` anywhere in this function — that is the
+/// entire point of the fix. Everything data-dependent is recorded into
+/// `table_requests` as a placeholder token instead, resolved later by
+/// `resolve_deferred` against live data, outside the cache.
 pub fn format_table(
     headers: &Option<Vec<String>>,
     rows: &Option<Vec<Vec<TableCellContent>>>,
     loop_data: &Option<String>,
     row_template: &Option<Vec<TableCellContent>>,
     footer: &Option<Vec<TableCellContent>>,
-    data: &Value,
     style: &Option<TableStyle>,
+    table_requests: &mut Vec<TableRequest>,
 ) -> Result<String, String> {
     let mut table_code = "#table(\n".to_string();
-
-    // Create context for formula transpilation
-    let transpile_ctx = crate::converter::calculations::TranspileContext {
-        is_loop: loop_data.is_some(),
-        loop_path: loop_data.clone().unwrap_or_default(),
-    };
 
     // 1. Determine column count safely
     let col_count = headers
@@ -92,7 +191,8 @@ pub fn format_table(
         }
     }
 
-    // 5. Header generation
+    // 5. Header generation — safe: header text lives directly in
+    // `content` (hashed into the cache key), not in `data`.
     if let Some(hdrs) = headers {
         if repeat {
             table_code.push_str("  table.header(\n");
@@ -127,14 +227,10 @@ pub fn format_table(
         }
     }
 
-    // 6. Pre-fetch all rows for footer aggregations
-    let all_rows = if let (Some(path), Some(_)) = (loop_data, row_template) {
-        calculations::get_all_rows(data, path).unwrap_or_default()
-    } else {
-        Vec::new()
-    };
-
-    // 7. Static rows
+    // 6. Static rows — also safe: their content (Text/Formula strings,
+    // Variable keys) lives directly in `content`, not resolved from live
+    // `data` here (Variable cells defer resolution to Typst compile time
+    // via resolve_variable_to_typst, same as elsewhere in the converter).
     if let Some(static_rows) = rows {
         for row in static_rows {
             for (idx, c) in row.iter().enumerate() {
@@ -144,47 +240,39 @@ pub fn format_table(
         }
     }
 
-    // 8. Dynamic loop rows (Evaluated in Rust for perfect formatting)
-    if let (Some(_path), Some(template)) = (loop_data, row_template) {
-        // Iterate over the data in Rust, passing the row_index
-        for (row_index, item) in all_rows.iter().enumerate() {
-            for (idx, c) in template.iter().enumerate() {
-                let val = cell::render_loop_cell(
-                    c,
-                    style,
-                    idx,
-                    &transpile_ctx,
-                    item,
-                    &all_rows,
-                    row_index,
-                );
-                table_code.push_str(&format!(
-                    "          {},\n",
-                    cell::wrap_cell_span(c, &val, None)
-                ));
-            }
-        }
+    // 7. Dynamic loop rows — DEFERRED. This is the fix: previously this
+    // resolved concrete values from `data` right here, baking them into
+    // the string that gets cached. Now it only records what to resolve
+    // later and drops in a placeholder token.
+    if let (Some(path), Some(template)) = (loop_data, row_template) {
+        let token = format!("@@TABLE_ROWS_{}@@", table_requests.len());
+        table_requests.push(TableRequest::Rows {
+            token: token.clone(),
+            loop_data: path.clone(),
+            row_template: template.clone(),
+            style: style.clone(),
+        });
+        table_code.push_str(&format!("  {}\n", token));
     }
 
-    // 9. Footer rows
+    // 8. Footer rows — DEFERRED for the same reason (SUM/AVG/etc need
+    // `all_rows` resolved from live data). Deferred unconditionally, even
+    // for footers with only Text/Variable cells, to keep this uniformly
+    // safe rather than trying to partially defer per-cell-type.
     if let Some(ftr) = footer {
-        for (idx, c) in ftr.iter().enumerate() {
-            let val = cell::render_footer_cell(c, style, idx, &all_rows, &transpile_ctx);
-            let fill_override = if striped.is_some() {
-                Some("white")
-            } else {
-                None
-            };
-            table_code.push_str(&format!(
-                "  {},\n",
-                cell::wrap_cell_span(c, &val, fill_override)
-            ));
-        }
+        let token = format!("@@TABLE_FOOTER_{}@@", table_requests.len());
+        table_requests.push(TableRequest::Footer {
+            token: token.clone(),
+            footer: ftr.clone(),
+            loop_data: loop_data.clone(),
+            style: style.clone(),
+        });
+        table_code.push_str(&format!("  {}\n", token));
     }
 
     table_code.push_str(")\n");
 
-    // 10. Width wrapper
+    // 9. Width wrapper
     if let Some(width) = style.as_ref().and_then(|s| s.width.as_deref()) {
         let safe_width = safe_typst_token(width, "100%");
         table_code = format!("#block(width: {})[\n{}\n]", safe_width, table_code);

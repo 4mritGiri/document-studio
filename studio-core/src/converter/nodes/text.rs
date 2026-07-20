@@ -1,13 +1,4 @@
 // src/converter/nodes/text.rs
-//
-// NOTE: I don't have your current text.rs (it was never shared with me),
-// so this is a from-scratch implementation matching the call signatures
-// builder.rs already expects (`render_paragraph`, `render_heading`,
-// `render_bullet_list`). If your existing file has additional logic —
-// e.g. a `render_page_number_format` helper supporting {current}/{total}
-// tokens for page numbers appearing in body text — please merge that back
-// in; the version below intentionally keeps PageNumber handling simple
-// (just the current page number) since I can't see what you already had.
 
 use crate::converter::context::{
     color_expr, escape_typst, escape_typst_string_literal, resolve_variable_to_typst,

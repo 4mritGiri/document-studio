@@ -33,6 +33,9 @@ build: ## Build the Rust engine in release mode
 	@echo "🏗️  Building Rust Engine (Release)..."
 	cd studio-core && cargo build
 
+dev-watch:
+	cd studio-core && cargo watch -c -w src -x run
+
 dev: ## Run the Rust engine in development mode (fast compile, debug info)
 	@echo "🚀 Running Rust Engine (Dev)..."
 	cd studio-core && cargo run

@@ -54,6 +54,14 @@ pub enum TableCellContent {
         colspan: Option<u32>,
         #[serde(default)]
         rowspan: Option<u32>,
+        /// Per-cell background color, e.g. "#F0955E" or "orange". Takes
+        /// priority over any automatic fill (e.g. striped_rows'
+        /// anti-bleed neutralization on footer cells) — see
+        /// cell::resolve_cell_fill / wrap_cell_span. Validated through the
+        /// same color_expr allowlist as every other color field, never
+        /// interpolated raw into generated Typst source.
+        #[serde(default)]
+        fill: Option<String>,
     },
     Text {
         text: String,
@@ -62,6 +70,8 @@ pub enum TableCellContent {
         colspan: Option<u32>,
         #[serde(default)]
         rowspan: Option<u32>,
+        #[serde(default)]
+        fill: Option<String>,
     },
 
     // Excel-like calculations
@@ -75,5 +85,7 @@ pub enum TableCellContent {
         colspan: Option<u32>,
         #[serde(default)]
         rowspan: Option<u32>,
+        #[serde(default)]
+        fill: Option<String>,
     },
 }

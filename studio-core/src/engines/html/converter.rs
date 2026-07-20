@@ -685,12 +685,13 @@ fn render_table_cell(
 ) -> String {
     let align = cell_align(style, idx);
 
-    let (value, bold, colspan, rowspan) = match cell {
+    let (value, bold, colspan, rowspan, cell_fill) = match cell {
         TableCellContent::Variable {
             key,
             bold,
             colspan,
             rowspan,
+            fill,
         } => {
             let v = if key == "__index" {
                 index.map(|i| (i + 1).to_string()).unwrap_or_default()
@@ -699,14 +700,21 @@ fn render_table_cell(
             } else {
                 resolve_key(key, local, global)
             };
-            (v, bold.unwrap_or(false), *colspan, *rowspan)
+            (v, bold.unwrap_or(false), *colspan, *rowspan, fill.clone())
         }
         TableCellContent::Text {
             text,
             bold,
             colspan,
             rowspan,
-        } => (html_escape(text), bold.unwrap_or(false), *colspan, *rowspan),
+            fill,
+        } => (
+            html_escape(text),
+            bold.unwrap_or(false),
+            *colspan,
+            *rowspan,
+            fill.clone(),
+        ),
         TableCellContent::Formula {
             formula,
             format: fmt,
@@ -715,6 +723,7 @@ fn render_table_cell(
             bold,
             colspan,
             rowspan,
+            fill,
         } => {
             // Evaluate in Rust
             let raw_result = crate::converter::calculations::evaluate_formula(
@@ -736,12 +745,10 @@ fn render_table_cell(
                 } else {
                     f.replace("{value}", &raw_result)
                 }
+            } else if let Ok(num) = raw_result.parse::<f64>() {
+                crate::converter::calculations::format_number(num, loc, dec)
             } else {
-                if let Ok(num) = raw_result.parse::<f64>() {
-                    crate::converter::calculations::format_number(num, loc, dec)
-                } else {
-                    raw_result
-                }
+                raw_result
             };
 
             (
@@ -749,6 +756,7 @@ fn render_table_cell(
                 bold.unwrap_or(false),
                 *colspan,
                 *rowspan,
+                fill.clone(),
             )
         }
     };
@@ -767,8 +775,18 @@ fn render_table_cell(
         .filter(|r| *r > 1)
         .map(|r| format!(" rowspan=\"{}\"", r))
         .unwrap_or_default();
-    let bg_style = fill_override
-        .map(|c| format!(" background-color:{};", safe_css_color(c, "white")))
+
+    // A cell's own `fill` always takes priority over the automatic
+    // fill_override (e.g. the neutral white forced onto footer cells so
+    // striped_rows can't bleed into totals) — matches the same precedence
+    // rule used by the Typst engine's wrap_cell_span, so a template
+    // renders consistently whether output as PDF or HTML.
+    let resolved_fill = cell_fill
+        .as_deref()
+        .map(|c| safe_css_color(c, "transparent"))
+        .or_else(|| fill_override.map(|c| safe_css_color(c, "white")));
+    let bg_style = resolved_fill
+        .map(|c| format!(" background-color:{};", c))
         .unwrap_or_default();
 
     format!(

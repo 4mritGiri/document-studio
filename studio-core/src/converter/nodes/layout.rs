@@ -2,6 +2,7 @@
 
 use crate::converter::context::safe_typst_token;
 use crate::converter::nodes::qr::QrRequest;
+use crate::converter::nodes::table::TableRequest;
 use crate::domain::Node;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -16,9 +17,17 @@ pub fn render_placed(
     data: &Value,
     assets: &mut HashMap<String, Bytes>,
     qr_requests: &mut Vec<QrRequest>,
+    table_requests: &mut Vec<TableRequest>,
     depth: usize,
 ) -> Result<String, String> {
-    let inner = crate::converter::builder::render_node(content, data, assets, qr_requests, depth)?;
+    let inner = crate::converter::builder::render_node(
+        content,
+        data,
+        assets,
+        qr_requests,
+        table_requests,
+        depth,
+    )?;
     let mut args = vec![anchor_expr(anchor).to_string()];
     if let Some(dx) = dx {
         args.push(format!("dx: {}", safe_typst_token(dx, "0pt")));
@@ -41,6 +50,7 @@ pub fn render_columns(
     data: &Value,
     assets: &mut HashMap<String, Bytes>,
     qr_requests: &mut Vec<QrRequest>,
+    table_requests: &mut Vec<TableRequest>,
     depth: usize,
 ) -> Result<String, String> {
     let col_defs = column_widths
@@ -65,6 +75,7 @@ pub fn render_columns(
                 data,
                 assets,
                 qr_requests,
+                table_requests,
                 depth,
             )?);
         }
@@ -81,7 +92,12 @@ fn anchor_expr(anchor: &Option<String>) -> &'static str {
         Some("bottom-left") => "bottom + left",
         Some("bottom-right") => "bottom + right",
         Some("bottom-center") => "bottom + center",
-        Some("center") => "center",
+        // Bare "center" does NOT reliably center on both axes in Typst's
+        // place() — verified empirically (it left content anchored near
+        // the bottom edge). "center + horizon" is the correct expression
+        // for true 2D centering, e.g. overlaying a monogram letter on a
+        // logo shape.
+        Some("center") => "center + horizon",
         _ => "top + left",
     }
 }
